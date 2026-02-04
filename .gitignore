@@ -12,7 +12,7 @@ __pycache__/
 !/data/README.md
 /outputs/*
 !/outputs/README.md
-/data/processed/8_Emb_Rank/7_all_wikipedia_pages.jsonl
+/data/processed/7_all_wikipedia_pages.jsonl
 # Cache
 **/.cache/
 
