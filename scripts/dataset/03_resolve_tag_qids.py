@@ -1,3 +1,5 @@
+"""Resolve tag labels to Wikidata QIDs with optional SPARQL fallback."""
+
 #!/usr/bin/env python3
 """Resolve Wikidata QIDs for previously harvested related tag labels.
 
@@ -38,7 +40,7 @@ from tqdm import tqdm
 # Shared configuration (mirrors 2_Get_tags.py defaults)
 # ---------------------------------------------------------------------------
 
-BASE = "./"
+BASE = os.environ.get("ARGUS_HF_BASE") or os.environ.get("HF_HOME") or "./"
 
 os.environ.setdefault("HF_HOME", BASE)
 os.environ.setdefault("HF_HUB_CACHE", f"{BASE}/hub")
@@ -616,5 +618,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
 

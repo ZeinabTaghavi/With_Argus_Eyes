@@ -1,3 +1,5 @@
+"""Analyze ranking outputs and generate figures."""
+
 from __future__ import annotations
 from typing import List, Dict, Callable
 import os, json, sys
@@ -27,7 +29,7 @@ def _load_flat_yaml(path: str) -> dict:
 
 def parse_args() -> argparse.Namespace:
     """Parse CLI args (mirroring 6_Emb_Rank.py style)."""
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description="Analyze ranking outputs and generate figures.")
     parser.add_argument("--config", type=str, default="", help="Path to flat YAML config.")
     parser.add_argument("--retriever", type=str, default="contriever", choices=["contriever", "reasonir", "qwen3", "jina"])
     parser.add_argument("--order", type=str, default="all", help="Tag universe order per item, e.g., 'all' or '10000'.")

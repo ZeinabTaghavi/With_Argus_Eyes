@@ -1,3 +1,5 @@
+"""Compute average scores for label/context pairs."""
+
 #!/usr/bin/env python
 from __future__ import annotations
 

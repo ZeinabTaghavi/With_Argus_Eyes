@@ -1,3 +1,5 @@
+"""Score label-context pairs for analysis."""
+
 import os
 import sys
 import json

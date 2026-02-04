@@ -1,6 +1,11 @@
-"""Collect random Wikidata items and labels for dataset construction."""
-
 import os
+# 1️⃣ Pick an absolute path that has enough space
+BASE = "../../../../data/proj/zeinabtaghavi"
+
+# 2️⃣ Point both caches there ─ before any HF import
+os.environ["HF_HOME"]          = BASE          # makes <BASE>/hub and <BASE>/datasets
+os.environ["HF_HUB_CACHE"]     = f"{BASE}/hub" # optional, explicit
+os.environ["HF_DATASETS_CACHE"]= f"{BASE}/datasets"
 
 import math
 import time
@@ -16,8 +21,8 @@ import argparse
 API = "https://www.wikidata.org/w/api.php"
 HEADERS = {"User-Agent": "WikidataSampler/0.3 (research; your-email@example.com)"}
 
-DB_PATH = "./data/interim/1_wikidata_random.db"          # disk-backed dedup + resume
-OUT_PATH = "./data/interim/1_wikidata_random_labels_0M.jsonl.gz"  # compressed output
+DB_PATH = "wikidata_random.db"          # disk-backed dedup + resume
+OUT_PATH = "./1_Dataset_Construction/temp_data/1_wikidata_random_labels.jsonl.gz"  # compressed output
 
 
 # -------------------------------
@@ -95,11 +100,11 @@ def dump_all_labels_to_gzip(out_path: str, con=None, overwrite: bool = False) ->
     print(f"[labels] exported {written} rows from DB to {out_path}")
     return written
 
-def dump_all_labels_batched(out_path: str, batch: int = 500000, overwrite: bool = False, con=None) -> int:
+def dump_all_labels_batched(out_path: str, batch: int = 500_000, overwrite: bool = False, con=None) -> int:
     """
     Export the entire labels table using rowid pagination (memory-safe for very large DBs).
     Returns total rows written.
-    """ 
+    """
     close_con = False
     if con is None:
         con = init_db()
@@ -271,7 +276,7 @@ def collect_qids_streaming(target_total: int,
         round_idx += 1
     con.close()
 
-def label_qids_streaming(batch_unlabeled: int = 50000,
+def label_qids_streaming(batch_unlabeled: int = 50_000,
                          lang_order: List[str] = ["en"],
                          workers: Optional[int] = None,
                          out_path: str = OUT_PATH,
@@ -326,7 +331,7 @@ def label_qids_streaming(batch_unlabeled: int = 50000,
         print(f"[labels] wrote {total_written} lines this pass | total labeled={have_labels}")
     con.close()
 
-def run_pipeline(target_total: int = 7000000,
+def run_pipeline(target_total: int = 2000000,
                  qid_workers: Optional[int] = None,
                  label_workers: Optional[int] = None,
                  out_path: str = OUT_PATH,
@@ -341,7 +346,7 @@ def run_pipeline(target_total: int = 7000000,
     collect_qids_streaming(target_total=target_total, workers=qid_workers)
 
     print(f"==> Phase 2: labeling (streamed)")
-    label_qids_streaming(batch_unlabeled=50000,
+    label_qids_streaming(batch_unlabeled=50_000,
                          lang_order=lang_order,
                          workers=label_workers,
                          out_path=out_path,
@@ -352,19 +357,13 @@ def run_pipeline(target_total: int = 7000000,
 # -------------------------------
 # CLI
 # -------------------------------
-def parse_args() -> argparse.Namespace:
+if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Wikidata QID collector/labeler + exporter")
     parser.add_argument("--db", type=str, default=None,
                         help="Path to SQLite DB (defaults to DB_PATH or $WIKIDATA_DB_PATH)")
     parser.add_argument("--out", type=str, default=None,
                         help="Path to output gzip JSONL (defaults to OUT_PATH)")
-    parser.add_argument("--hf_base", type=str, default=None,
-                        help="Base directory for HF caches (sets $HF_HOME; falls back to $ARGUS_HF_BASE, then $HF_HOME, then ./)")
-    parser.add_argument("--hf_hub_cache", type=str, default=None,
-                        help="Path for Hugging Face hub cache ($HF_HUB_CACHE). Defaults to <hf_base>/hub if not set.")
-    parser.add_argument("--hf_datasets_cache", type=str, default=None,
-                        help="Path for Hugging Face datasets cache ($HF_DATASETS_CACHE). Defaults to <hf_base>/datasets if not set.")
-    parser.add_argument("--target_total", type=int, default=7000000,
+    parser.add_argument("--target_total", type=int, default=2000000,
                         help="Target unique QIDs to collect into 'seen'")
     parser.add_argument("--qid_workers", type=int, default=None,
                         help="Workers for random QID collection")
@@ -372,7 +371,7 @@ def parse_args() -> argparse.Namespace:
                         help="Workers for labeling API calls")
     parser.add_argument("--lang", nargs="+", default=["en"],
                         help="Language fallback order for labels")
-    parser.add_argument("--batch_unlabeled", type=int, default=50000,
+    parser.add_argument("--batch_unlabeled", type=int, default=50_000,
                         help="Batch size for fetching unlabeled QIDs")
     parser.add_argument("--export_only", action="store_true",
                         help="Skip API; export all labels from existing DB to gzip")
@@ -385,43 +384,13 @@ def parse_args() -> argparse.Namespace:
 
     args = parser.parse_args()
 
-    # Cache/env resolution:
-    # - CLI flags win
-    # - otherwise keep existing env if present
-    # - otherwise derive from base
-    base = args.hf_base or os.environ.get("ARGUS_HF_BASE") or os.environ.get("HF_HOME") or "./"
-    if args.hf_base:
-        os.environ["HF_HOME"] = base
-    else:
-        os.environ.setdefault("HF_HOME", base)  # makes <BASE>/hub and <BASE>/datasets
-
-    if args.hf_hub_cache:
-        os.environ["HF_HUB_CACHE"] = args.hf_hub_cache
-    else:
-        os.environ.setdefault("HF_HUB_CACHE", f"{base}/hub")
-
-    if args.hf_datasets_cache:
-        os.environ["HF_DATASETS_CACHE"] = args.hf_datasets_cache
-    else:
-        os.environ.setdefault("HF_DATASETS_CACHE", f"{base}/datasets")
-
-    return args
-
-
-def main() -> None:
-    args = parse_args()
-
     # Allow runtime DB override via env or --db
     if args.db:
         os.environ["WIKIDATA_DB_PATH"] = args.db
-
     out_path = args.out or OUT_PATH
-    if args.target_total>1000000:
-        out_path = args.out or OUT_PATH.replace("_0M.jsonl.gz", f"_{args.target_total//1000000}M.jsonl.gz")
 
     if args.print_counts:
         print_db_counts()
-
 
     if args.export_only:
         # Pure export path (no API calls)
@@ -438,7 +407,3 @@ def main() -> None:
                              out_path=out_path,
                              export_existing_if_empty=True,
                              overwrite_output=args.overwrite)
-
-
-if __name__ == "__main__":
-    main()

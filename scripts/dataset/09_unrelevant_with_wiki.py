@@ -1,3 +1,5 @@
+"""Intersect irrelevant tags with Wikipedia QIDs."""
+
 import argparse
 import json
 import os

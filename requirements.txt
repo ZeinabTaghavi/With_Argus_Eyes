@@ -1,0 +1,23 @@
+# pip install -r requirements.txt
+# Core scientific stack
+numpy
+scipy
+scikit-learn
+matplotlib
+joblib
+
+# Progress + parallelism
+p_tqdm
+tqdm
+
+# Data + HTTP
+requests
+urllib3
+
+# Hugging Face + ML
+datasets
+transformers
+torch
+
+# Baselines
+xgboost

@@ -1,3 +1,5 @@
+"""Aggregate ranking analysis and generate summary figures."""
+
 from __future__ import annotations
 from typing import List, Dict, Callable, Tuple, Any
 import os, json, sys
@@ -42,7 +44,7 @@ def _load_flat_yaml(path: str) -> dict:
     return cfg
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description="Aggregate ranking analysis and generate summary figures.")
     parser.add_argument("--config", type=str, default="", help="Path to flat YAML config.")
     parser.add_argument("--retriever", type=str, default="contriever", choices=["contriever", "reasonir", "qwen3", "jina", "bge-m3", "rader", "reason-embed", "nv-embed", "gritlm"])
     parser.add_argument("--order", type=str, default=800, help="Tag universe order per item, e.g., 'all' or '10000'.")

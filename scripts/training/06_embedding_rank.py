@@ -1,3 +1,5 @@
+"""Rank tags by embedding similarity and export ranking outputs."""
+
 import os
 import sys
 
@@ -25,7 +27,7 @@ def main():
 
     # 2) CLI
     import argparse
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description="Rank tags by embedding similarity and export ranking outputs.")
     parser.add_argument("--config", type=str, default="", help="Path to YAML config file with flat key:value pairs.")
     parser.add_argument("--retriever", type=str, default="contriever", choices=["contriever", "reasonir", "qwen3", "jina"])
     parser.add_argument("--reasonir_instruction", type=str, default="")

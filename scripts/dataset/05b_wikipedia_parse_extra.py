@@ -1,3 +1,5 @@
+"""Fetch additional Wikipedia summaries for missed tags."""
+
 import glob
 import json
 import os
@@ -12,13 +14,13 @@ from urllib.parse import quote
 from urllib3.util.retry import Retry
 
 
-# 1️⃣ Pick an absolute path that has enough space
-BASE = "./"
+# 1️⃣ Pick an absolute path that has enough space (ARGUS_HF_BASE/HF_HOME or default)
+BASE = os.environ.get("ARGUS_HF_BASE") or os.environ.get("HF_HOME") or "./"
 
 # 2️⃣ Point both caches there ─ before any HF import
-os.environ["HF_HOME"] = BASE
-os.environ["HF_HUB_CACHE"] = f"{BASE}/hub"
-os.environ["HF_DATASETS_CACHE"] = f"{BASE}/datasets"
+os.environ.setdefault("HF_HOME", BASE)
+os.environ.setdefault("HF_HUB_CACHE", f"{BASE}/hub")
+os.environ.setdefault("HF_DATASETS_CACHE", f"{BASE}/datasets")
 
 
 # Prefer p_tqdm if available; else use tqdm.contrib.concurrent; else plain tqdm
@@ -381,5 +383,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 

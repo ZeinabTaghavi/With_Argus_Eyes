@@ -1,3 +1,5 @@
+"""Enrich items with Wikidata descriptions."""
+
 import argparse
 import json
 import os
@@ -478,7 +480,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output_path", type=str, default="./data/interim/5_items_with_wikipedia_and_desc.jsonl")
     parser.add_argument("--lang", type=str, default="en")
     parser.add_argument("--batch_size", type=int, default=10000)
-    parser.add_argument("--hf_base", type=str, default="./")
+    parser.add_argument(
+        "--hf_base",
+        type=str,
+        default=None,
+        help="Base path for HF caches (falls back to $ARGUS_HF_BASE, then $HF_HOME, then ./).",
+    )
     return parser.parse_args()
 
 
@@ -486,10 +493,15 @@ def main() -> None:
     args = parse_args()
 
     # HF cache setup
-    BASE = args.hf_base
-    os.environ["HF_HOME"] = BASE
-    os.environ["HF_HUB_CACHE"] = f"{BASE}/hub"
-    os.environ["HF_DATASETS_CACHE"] = f"{BASE}/datasets"
+    base = args.hf_base or os.environ.get("ARGUS_HF_BASE") or os.environ.get("HF_HOME") or "./"
+    if args.hf_base:
+        os.environ["HF_HOME"] = base
+        os.environ["HF_HUB_CACHE"] = f"{base}/hub"
+        os.environ["HF_DATASETS_CACHE"] = f"{base}/datasets"
+    else:
+        os.environ.setdefault("HF_HOME", base)
+        os.environ.setdefault("HF_HUB_CACHE", f"{base}/hub")
+        os.environ.setdefault("HF_DATASETS_CACHE", f"{base}/datasets")
 
     input_path = args.input_path
     output_path = args.output_path

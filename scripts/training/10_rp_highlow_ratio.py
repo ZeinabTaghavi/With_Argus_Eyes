@@ -1,3 +1,5 @@
+"""Analyze high/low ratio for retrieval probability."""
+
 #!/usr/bin/env python
 from __future__ import annotations
 

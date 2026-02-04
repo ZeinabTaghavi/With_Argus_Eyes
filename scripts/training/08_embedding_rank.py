@@ -1,3 +1,5 @@
+"""Run embedding-rank experiments for multiple retrievers."""
+
 import os
 import sys
 import json
@@ -21,7 +23,7 @@ if workspace_root not in sys.path:
 # CLI
 # ---------------------------
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description="Run embedding-rank experiments for multiple retrievers.")
     parser.add_argument("--config", type=str, default="", help="Path to flat YAML config.")
     parser.add_argument(
         "--retriever",

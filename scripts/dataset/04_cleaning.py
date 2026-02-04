@@ -1,3 +1,5 @@
+"""Clean and deduplicate tag-only items."""
+
 import argparse
 import glob
 import json

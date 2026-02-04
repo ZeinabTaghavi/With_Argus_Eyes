@@ -1,11 +1,13 @@
+"""Fetch Wikipedia summaries for tag QIDs."""
+
 import os
-# 1️⃣ Pick an absolute path that has enough space
-BASE = "./"
+# 1️⃣ Pick an absolute path that has enough space (ARGUS_HF_BASE/HF_HOME or default)
+BASE = os.environ.get("ARGUS_HF_BASE") or os.environ.get("HF_HOME") or "./"
 
 # 2️⃣ Point both caches there ─ before any HF import
-os.environ["HF_HOME"]          = BASE          # makes <BASE>/hub and <BASE>/datasets
-os.environ["HF_HUB_CACHE"]     = f"{BASE}/hub" # optional, explicit
-os.environ["HF_DATASETS_CACHE"]= f"{BASE}/datasets" 
+os.environ.setdefault("HF_HOME", BASE)          # makes <BASE>/hub and <BASE>/datasets
+os.environ.setdefault("HF_HUB_CACHE", f"{BASE}/hub") # optional, explicit
+os.environ.setdefault("HF_DATASETS_CACHE", f"{BASE}/datasets")
 
 import json
 import glob

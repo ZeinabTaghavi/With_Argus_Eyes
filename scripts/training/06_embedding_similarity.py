@@ -1,3 +1,5 @@
+"""Compute related-tag similarity scores with embeddings."""
+
 import argparse
 import json
 import os
