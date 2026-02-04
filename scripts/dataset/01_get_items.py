@@ -104,7 +104,7 @@ def dump_all_labels_batched(out_path: str, batch: int = 500_000, overwrite: bool
     """
     Export the entire labels table using rowid pagination (memory-safe for very large DBs).
     Returns total rows written.
-    """
+    """ 
     close_con = False
     if con is None:
         con = init_db()
