@@ -1,0 +1,9 @@
+{
+  "contriever": {
+    "HateXplain_mean_difference": -0.002831682689240373,
+    "HateXplain_mean_threshold_difference": -0.002831682689240373,
+    "CrowS_Pairs_mean_difference": -0.006834792240520705,
+    "CrowS_Pairs_mean_threshold_difference": -0.006834792240520711,
+    "Difference_between_datasets": 0.004003109551280332
+  }
+}

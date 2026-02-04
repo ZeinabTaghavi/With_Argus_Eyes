@@ -1,0 +1,17 @@
+\begin{table}[t]
+\centering
+\begin{tabular}{llcccccccccc}
+\toprule
+Model Type & Architecture / Config & RMSE ($\downarrow$) & MAE ($\downarrow$) & Pearson $r$ ($\uparrow$) & Spearman $\rho$ ($\uparrow$) & Precision$_{\text{macro}}$ ($\uparrow$) & Recall$_{\text{macro}}$ ($\uparrow$) & F1$_{\text{macro}}$ ($\uparrow$) & F1$_{\text{micro}}$ ($\uparrow$) & F1$_{\text{weighted}}$ ($\uparrow$) & Accuracy ($\uparrow$) \\
+\midrule
+Baselines & cosine & 0.334 & 0.305 & 0.027 & 0.022 & 0.066 & 0.333 & 0.110 & 0.198 & 0.065 & 0.198 \\
+ & one & 0.775 & 0.740 & 0.000 & 0.000 & 0.031 & 0.333 & 0.057 & 0.094 & 0.016 & 0.094 \\
+ & ridge & 0.169 & 0.125 & 0.688 & 0.632 & 0.678 & 0.564 & 0.573 & 0.761 & 0.755 & 0.761 \\
+ & xgboost & 0.162 & 0.115 & 0.715 & 0.670 & 0.704 & 0.567 & 0.581 & 0.772 & 0.763 & 0.772 \\
+ & zero & 0.349 & 0.260 & 0.000 & 0.000 & 0.236 & 0.333 & 0.276 & 0.708 & 0.587 & 0.708 \\
+MLPs & reason-embed_S3_WD_High & 0.169 & 0.124 & 0.689 & 0.633 & 0.678 & 0.564 & 0.574 & 0.762 & 0.756 & 0.762 \\
+\bottomrule
+\end{tabular}
+\caption{Regression performance on the reason-embed_ratio_unrelevant_below_k_20_o_800_k_20_sampled_average regression task.}
+\label{tab:reason-embed_ratio_unrelevant_below_k_20_o_800_k_20_sampled_average_regression}
+\end{table}

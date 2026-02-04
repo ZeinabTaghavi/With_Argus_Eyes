@@ -1,0 +1,1 @@
+{"label": "qwen3_S3_WD_High", "hidden_dims": [], "dropout": 0.0, "loss": "mse", "lr": 0.001, "weight_decay": 0.01, "epochs": 50, "batch_size": 128, "scheduler": "plateau"}

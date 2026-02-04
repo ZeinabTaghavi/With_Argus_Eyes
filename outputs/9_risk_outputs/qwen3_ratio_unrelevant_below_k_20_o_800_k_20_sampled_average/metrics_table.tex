@@ -1,0 +1,17 @@
+\begin{table}[t]
+\centering
+\begin{tabular}{llcccccccccc}
+\toprule
+Model Type & Architecture / Config & RMSE ($\downarrow$) & MAE ($\downarrow$) & Pearson $r$ ($\uparrow$) & Spearman $\rho$ ($\uparrow$) & Precision$_{\text{macro}}$ ($\uparrow$) & Recall$_{\text{macro}}$ ($\uparrow$) & F1$_{\text{macro}}$ ($\uparrow$) & F1$_{\text{micro}}$ ($\uparrow$) & F1$_{\text{weighted}}$ ($\uparrow$) & Accuracy ($\uparrow$) \\
+\midrule
+Baselines & cosine & 0.335 & 0.306 & 0.004 & 0.016 & 0.067 & 0.333 & 0.112 & 0.201 & 0.067 & 0.201 \\
+ & one & 0.781 & 0.747 & 0.000 & 0.000 & 0.026 & 0.333 & 0.047 & 0.077 & 0.011 & 0.077 \\
+ & ridge & 0.171 & 0.129 & 0.662 & 0.613 & 0.696 & 0.578 & 0.598 & 0.761 & 0.761 & 0.761 \\
+ & xgboost & 0.158 & 0.111 & 0.718 & 0.672 & 0.722 & 0.575 & 0.605 & 0.785 & 0.777 & 0.785 \\
+ & zero & 0.339 & 0.253 & 0.000 & 0.000 & 0.241 & 0.333 & 0.280 & 0.722 & 0.606 & 0.722 \\
+MLPs & qwen3_S3_WD_High & 0.172 & 0.129 & 0.661 & 0.613 & 0.696 & 0.577 & 0.598 & 0.762 & 0.762 & 0.762 \\
+\bottomrule
+\end{tabular}
+\caption{Regression performance on the qwen3_ratio_unrelevant_below_k_20_o_800_k_20_sampled_average regression task.}
+\label{tab:qwen3_ratio_unrelevant_below_k_20_o_800_k_20_sampled_average_regression}
+\end{table}

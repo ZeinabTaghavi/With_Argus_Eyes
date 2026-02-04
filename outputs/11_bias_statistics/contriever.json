@@ -1,0 +1,558 @@
+{
+  "HateXplain": {
+    "None": {
+      "overall": {
+        "mean": 0.991106719367589,
+        "count": 1012,
+        "above_threshold": 1003
+      },
+      "biased": {
+        "mean": 1.0,
+        "count": 292,
+        "above_threshold": 292
+      },
+      "neutral": {
+        "mean": 0.9875,
+        "count": 720,
+        "above_threshold": 711
+      }
+    },
+    "Refugee": {
+      "overall": {
+        "mean": 1.0,
+        "count": 148,
+        "above_threshold": 148
+      },
+      "biased": {
+        "mean": 1.0,
+        "count": 91,
+        "above_threshold": 91
+      },
+      "neutral": {
+        "mean": 1.0,
+        "count": 57,
+        "above_threshold": 57
+      }
+    },
+    "Other": {
+      "overall": {
+        "mean": 0.9972677595628415,
+        "count": 366,
+        "above_threshold": 365
+      },
+      "biased": {
+        "mean": 1.0,
+        "count": 269,
+        "above_threshold": 269
+      },
+      "neutral": {
+        "mean": 0.9896907216494846,
+        "count": 97,
+        "above_threshold": 96
+      }
+    },
+    "Islam": {
+      "overall": {
+        "mean": 0.9928057553956835,
+        "count": 278,
+        "above_threshold": 276
+      },
+      "biased": {
+        "mean": 0.9911504424778761,
+        "count": 226,
+        "above_threshold": 224
+      },
+      "neutral": {
+        "mean": 1.0,
+        "count": 52,
+        "above_threshold": 52
+      }
+    },
+    "Jewish": {
+      "overall": {
+        "mean": 0.9956709956709957,
+        "count": 231,
+        "above_threshold": 230
+      },
+      "biased": {
+        "mean": 0.9950738916256158,
+        "count": 203,
+        "above_threshold": 202
+      },
+      "neutral": {
+        "mean": 1.0,
+        "count": 28,
+        "above_threshold": 28
+      }
+    },
+    "Arab": {
+      "overall": {
+        "mean": 0.9875,
+        "count": 160,
+        "above_threshold": 158
+      },
+      "biased": {
+        "mean": 0.9858156028368794,
+        "count": 141,
+        "above_threshold": 139
+      },
+      "neutral": {
+        "mean": 1.0,
+        "count": 19,
+        "above_threshold": 19
+      }
+    },
+    "African": {
+      "overall": {
+        "mean": 0.9976958525345622,
+        "count": 434,
+        "above_threshold": 433
+      },
+      "biased": {
+        "mean": 0.9972375690607734,
+        "count": 362,
+        "above_threshold": 361
+      },
+      "neutral": {
+        "mean": 1.0,
+        "count": 72,
+        "above_threshold": 72
+      }
+    },
+    "Nonreligious": {
+      "overall": {
+        "mean": 1.0,
+        "count": 8,
+        "above_threshold": 8
+      },
+      "biased": {
+        "mean": 1.0,
+        "count": 8,
+        "above_threshold": 8
+      },
+      "neutral": {
+        "mean": 0.0,
+        "count": 0,
+        "above_threshold": 0
+      }
+    },
+    "Women": {
+      "overall": {
+        "mean": 0.9971988795518207,
+        "count": 357,
+        "above_threshold": 356
+      },
+      "biased": {
+        "mean": 0.9961089494163424,
+        "count": 257,
+        "above_threshold": 256
+      },
+      "neutral": {
+        "mean": 1.0,
+        "count": 100,
+        "above_threshold": 100
+      }
+    },
+    "Minority": {
+      "overall": {
+        "mean": 1.0,
+        "count": 16,
+        "above_threshold": 16
+      },
+      "biased": {
+        "mean": 1.0,
+        "count": 15,
+        "above_threshold": 15
+      },
+      "neutral": {
+        "mean": 1.0,
+        "count": 1,
+        "above_threshold": 1
+      }
+    },
+    "Caucasian": {
+      "overall": {
+        "mean": 1.0,
+        "count": 156,
+        "above_threshold": 156
+      },
+      "biased": {
+        "mean": 1.0,
+        "count": 91,
+        "above_threshold": 91
+      },
+      "neutral": {
+        "mean": 1.0,
+        "count": 65,
+        "above_threshold": 65
+      }
+    },
+    "Homosexual": {
+      "overall": {
+        "mean": 0.9879518072289156,
+        "count": 249,
+        "above_threshold": 246
+      },
+      "biased": {
+        "mean": 0.984375,
+        "count": 192,
+        "above_threshold": 189
+      },
+      "neutral": {
+        "mean": 1.0,
+        "count": 57,
+        "above_threshold": 57
+      }
+    },
+    "Christian": {
+      "overall": {
+        "mean": 1.0,
+        "count": 16,
+        "above_threshold": 16
+      },
+      "biased": {
+        "mean": 1.0,
+        "count": 11,
+        "above_threshold": 11
+      },
+      "neutral": {
+        "mean": 1.0,
+        "count": 5,
+        "above_threshold": 5
+      }
+    },
+    "Indian": {
+      "overall": {
+        "mean": 1.0,
+        "count": 10,
+        "above_threshold": 10
+      },
+      "biased": {
+        "mean": 1.0,
+        "count": 9,
+        "above_threshold": 9
+      },
+      "neutral": {
+        "mean": 1.0,
+        "count": 1,
+        "above_threshold": 1
+      }
+    },
+    "Asian": {
+      "overall": {
+        "mean": 0.9852941176470589,
+        "count": 68,
+        "above_threshold": 67
+      },
+      "biased": {
+        "mean": 0.9795918367346939,
+        "count": 49,
+        "above_threshold": 48
+      },
+      "neutral": {
+        "mean": 1.0,
+        "count": 19,
+        "above_threshold": 19
+      }
+    },
+    "Heterosexual": {
+      "overall": {
+        "mean": 1.0,
+        "count": 9,
+        "above_threshold": 9
+      },
+      "biased": {
+        "mean": 1.0,
+        "count": 8,
+        "above_threshold": 8
+      },
+      "neutral": {
+        "mean": 1.0,
+        "count": 1,
+        "above_threshold": 1
+      }
+    },
+    "Indigenous": {
+      "overall": {
+        "mean": 1.0,
+        "count": 7,
+        "above_threshold": 7
+      },
+      "biased": {
+        "mean": 1.0,
+        "count": 6,
+        "above_threshold": 6
+      },
+      "neutral": {
+        "mean": 1.0,
+        "count": 1,
+        "above_threshold": 1
+      }
+    },
+    "Men": {
+      "overall": {
+        "mean": 0.9932432432432432,
+        "count": 148,
+        "above_threshold": 147
+      },
+      "biased": {
+        "mean": 0.9883720930232558,
+        "count": 86,
+        "above_threshold": 85
+      },
+      "neutral": {
+        "mean": 1.0,
+        "count": 62,
+        "above_threshold": 62
+      }
+    },
+    "Disability": {
+      "overall": {
+        "mean": 1.0,
+        "count": 17,
+        "above_threshold": 17
+      },
+      "biased": {
+        "mean": 1.0,
+        "count": 13,
+        "above_threshold": 13
+      },
+      "neutral": {
+        "mean": 1.0,
+        "count": 4,
+        "above_threshold": 4
+      }
+    },
+    "Hispanic": {
+      "overall": {
+        "mean": 1.0,
+        "count": 62,
+        "above_threshold": 62
+      },
+      "biased": {
+        "mean": 1.0,
+        "count": 54,
+        "above_threshold": 54
+      },
+      "neutral": {
+        "mean": 1.0,
+        "count": 8,
+        "above_threshold": 8
+      }
+    },
+    "Economic": {
+      "overall": {
+        "mean": 1.0,
+        "count": 6,
+        "above_threshold": 6
+      },
+      "biased": {
+        "mean": 1.0,
+        "count": 3,
+        "above_threshold": 3
+      },
+      "neutral": {
+        "mean": 1.0,
+        "count": 3,
+        "above_threshold": 3
+      }
+    },
+    "Hindu": {
+      "overall": {
+        "mean": 1.0,
+        "count": 3,
+        "above_threshold": 3
+      },
+      "biased": {
+        "mean": 1.0,
+        "count": 2,
+        "above_threshold": 2
+      },
+      "neutral": {
+        "mean": 1.0,
+        "count": 1,
+        "above_threshold": 1
+      }
+    },
+    "Bisexual": {
+      "overall": {
+        "mean": 1.0,
+        "count": 1,
+        "above_threshold": 1
+      },
+      "biased": {
+        "mean": 1.0,
+        "count": 1,
+        "above_threshold": 1
+      },
+      "neutral": {
+        "mean": 0.0,
+        "count": 0,
+        "above_threshold": 0
+      }
+    },
+    "Asexual": {
+      "overall": {
+        "mean": 1.0,
+        "count": 2,
+        "above_threshold": 2
+      },
+      "biased": {
+        "mean": 1.0,
+        "count": 2,
+        "above_threshold": 2
+      },
+      "neutral": {
+        "mean": 0.0,
+        "count": 0,
+        "above_threshold": 0
+      }
+    }
+  },
+  "CrowS_Pairs": {
+    "0": {
+      "stereotypical": {
+        "mean": 0.9903100775193798,
+        "count": 516,
+        "above_threshold": 511
+      },
+      "anti": {
+        "mean": 0.998062015503876,
+        "count": 516,
+        "above_threshold": 515
+      },
+      "difference": {
+        "mean": -0.007751937984496124,
+        "count": 516
+      }
+    },
+    "1": {
+      "stereotypical": {
+        "mean": 0.9883720930232558,
+        "count": 172,
+        "above_threshold": 170
+      },
+      "anti": {
+        "mean": 0.9883720930232558,
+        "count": 172,
+        "above_threshold": 170
+      },
+      "difference": {
+        "mean": 0.0,
+        "count": 172
+      }
+    },
+    "2": {
+      "stereotypical": {
+        "mean": 0.9770992366412213,
+        "count": 262,
+        "above_threshold": 256
+      },
+      "anti": {
+        "mean": 0.9770992366412213,
+        "count": 262,
+        "above_threshold": 256
+      },
+      "difference": {
+        "mean": 0.0,
+        "count": 262
+      }
+    },
+    "3": {
+      "stereotypical": {
+        "mean": 0.9833333333333333,
+        "count": 60,
+        "above_threshold": 59
+      },
+      "anti": {
+        "mean": 0.9833333333333333,
+        "count": 60,
+        "above_threshold": 59
+      },
+      "difference": {
+        "mean": 0.0,
+        "count": 60
+      }
+    },
+    "4": {
+      "stereotypical": {
+        "mean": 0.9811320754716981,
+        "count": 159,
+        "above_threshold": 156
+      },
+      "anti": {
+        "mean": 1.0,
+        "count": 159,
+        "above_threshold": 159
+      },
+      "difference": {
+        "mean": -0.018867924528301886,
+        "count": 159
+      }
+    },
+    "5": {
+      "stereotypical": {
+        "mean": 0.9642857142857143,
+        "count": 84,
+        "above_threshold": 81
+      },
+      "anti": {
+        "mean": 0.9761904761904762,
+        "count": 84,
+        "above_threshold": 82
+      },
+      "difference": {
+        "mean": -0.011904761904761904,
+        "count": 84
+      }
+    },
+    "6": {
+      "stereotypical": {
+        "mean": 1.0,
+        "count": 63,
+        "above_threshold": 63
+      },
+      "anti": {
+        "mean": 1.0,
+        "count": 63,
+        "above_threshold": 63
+      },
+      "difference": {
+        "mean": 0.0,
+        "count": 63
+      }
+    },
+    "7": {
+      "stereotypical": {
+        "mean": 1.0,
+        "count": 105,
+        "above_threshold": 105
+      },
+      "anti": {
+        "mean": 1.0,
+        "count": 105,
+        "above_threshold": 105
+      },
+      "difference": {
+        "mean": 0.0,
+        "count": 105
+      }
+    },
+    "8": {
+      "stereotypical": {
+        "mean": 0.9425287356321839,
+        "count": 87,
+        "above_threshold": 82
+      },
+      "anti": {
+        "mean": 0.9655172413793104,
+        "count": 87,
+        "above_threshold": 84
+      },
+      "difference": {
+        "mean": -0.022988505747126436,
+        "count": 87
+      }
+    }
+  }
+}
