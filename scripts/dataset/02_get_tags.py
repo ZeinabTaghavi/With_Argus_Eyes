@@ -3,6 +3,7 @@
 import argparse
 import os
 
+import gzip
 import json
 import requests
 import unicodedata
@@ -435,7 +436,12 @@ def main() -> None:
     all_num = 0
     M = args.m_million
 
-    with open(f"./data/interim/1_wikidata_random_labels_{M}M.jsonl", "r") as f:
+    input_path = f"./data/interim/1_wikidata_random_labels_{M}M.jsonl"
+    if not os.path.exists(input_path) and os.path.exists(input_path + ".gz"):
+        input_path = input_path + ".gz"
+
+    open_fn = gzip.open if input_path.endswith(".gz") else open
+    with open_fn(input_path, "rt", encoding="utf-8") as f:
         for line in f:
             all_num += 1
             item = json.loads(line)

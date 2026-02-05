@@ -7,6 +7,5 @@ source "${THIS_DIR}/00_env.sh"
 
 PYTHON=${PYTHON:-python}
 
-"${PYTHON}" "${WORKSPACE_ROOT}/scripts/dataset/03_resolve_tag_qids.py" \
-  --input "${ARGUS_INTERIM_ROOT}/5_items_with_wikipedia_and_desc.jsonl" \
-  --output-dir "${ARGUS_INTERIM_ROOT}/with_qids"
+# Uses WIKI_MAX_WORKERS and WIKI_CHUNKSIZE from 00_env.sh
+"${PYTHON}" "${WORKSPACE_ROOT}/scripts/dataset/04_wikipedia_parse.py"

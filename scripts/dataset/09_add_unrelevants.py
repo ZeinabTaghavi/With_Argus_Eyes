@@ -156,8 +156,8 @@ if __name__ == "__main__":
 
 
 '''
-python scripts/dataset/08_add_unrelevants.py \
+python scripts/dataset/09_add_unrelevants.py \
   --order 5000 \
-  --out ./data/interim/7_unrelevant_qids_sampled.jsonl \
+  --out ./data/interim/7_unrelevant_qids.jsonl \
 
 '''

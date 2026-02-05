@@ -7,7 +7,7 @@ source "${THIS_DIR}/00_env.sh"
 
 PYTHON=${PYTHON:-python}
 
-"${PYTHON}" "${WORKSPACE_ROOT}/scripts/dataset/06_wikidata_desc.py" \
+"${PYTHON}" "${WORKSPACE_ROOT}/scripts/dataset/05_wikidata_desc.py" \
   --input_path "${ARGUS_INTERIM_ROOT}/4_items_with_wikipedia.jsonl" \
   --output_path "${ARGUS_INTERIM_ROOT}/5_items_with_wikipedia_and_desc.jsonl" \
   --hf_base "${ARGUS_HF_BASE}"

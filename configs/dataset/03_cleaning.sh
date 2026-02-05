@@ -7,7 +7,7 @@ source "${THIS_DIR}/00_env.sh"
 
 PYTHON=${PYTHON:-python}
 
-"${PYTHON}" "${WORKSPACE_ROOT}/scripts/dataset/04_cleaning.py" \
+"${PYTHON}" "${WORKSPACE_ROOT}/scripts/dataset/03_cleaning.py" \
   --input_dir "${ARGUS_INTERIM_ROOT}/2_tag_only" \
   --out_cleaned "${ARGUS_INTERIM_ROOT}/3_cleaned_items_tag_only.jsonl" \
   --low_in "${ARGUS_INTERIM_ROOT}/2_landmarks_low_freq.jsonl" \

@@ -23,7 +23,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--unrelevant_tags",
         type=str,
-        default="data/interim/7_unrelevant_qids_sampled.jsonl",
+        default="data/interim/7_unrelevant_qids.jsonl",
         help="Unrelevant tags JSONL path.",
     )
     parser.add_argument(

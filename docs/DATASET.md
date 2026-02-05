@@ -17,40 +17,36 @@ Runnable configs are provided in `configs/dataset/`:
    - Output: `data/interim/2_*`
 
 3) **Clean and deduplicate**
-   - Script: `scripts/dataset/04_cleaning.py`
-   - Output: `data/interim/4_*`
+   - Script: `scripts/dataset/03_cleaning.py`
+   - Output: `data/interim/3_*`
 
 4) **Fetch Wikipedia summaries**
-   - Script: `scripts/dataset/05_wikipedia_parse.py`
+   - Script: `scripts/dataset/04_wikipedia_parse.py`
+   - Output: `data/interim/4_*`
+
+5) **Enrich with Wikidata descriptions**
+   - Script: `scripts/dataset/05_wikidata_desc.py`
    - Output: `data/interim/5_*`
 
-5) **Optional extra Wikipedia pass**
-   - Script: `scripts/dataset/05b_wikipedia_parse_extra.py`
-   - Output: `data/interim/5b_*`
-
-6) **Enrich with Wikidata descriptions**
-   - Script: `scripts/dataset/06_wikidata_desc.py`
+6) **Second-depth tags (optional)**
+   - Script: `scripts/dataset/06_get_tags_second_depth.py`
    - Output: `data/interim/6_*`
 
-7) **Second-depth tags (optional)**
-   - Script: `scripts/dataset/07_get_tags_second_depth.py`
-   - Output: `data/interim/6_*`
-
-8) **Final cleaning + dataset export**
-    - Script: `scripts/dataset/10_final_cleaning.py`
+7) **Final cleaning + dataset export**
+    - Script: `scripts/dataset/07_final_cleaning.py`
     - Outputs: `data/interim/7_*` and final processed outputs under `data/processed/` (see `data/processed/8_Emb_Rank/`)
 
+8) **Build all relation tags**
+   - Script: `scripts/dataset/08_build_all_relation_tags.py`
+   - Output: `data/interim/7_all_relation_tags.json`
+
 9) **Add irrelevant tags**
-   - Script: `scripts/dataset/08_add_unrelevants.py`
-   - Output: `data/interim/7_*` (updated)
+   - Script: `scripts/dataset/09_add_unrelevants.py`
+   - Output: `data/interim/7_unrelevant_qids.jsonl`
 
 10) **Filter irrelevant tags with Wikipedia**
-    - Script: `scripts/dataset/09_unrelevant_with_wiki.py`
-    - Output: `data/interim/7_*`
-
-11) **Resolve tag QIDs (optional)**
-    - Script: `scripts/dataset/03_resolve_tag_qids.py`
-    - Output: `data/interim/*_with_qids.jsonl`
+    - Script: `scripts/dataset/10_unrelevant_with_wiki.py`
+    - Output: `data/interim/7_wiki_unrelevants_results.jsonl`
 
 ## Notes
 - Individual scripts have CLI arguments for overriding paths. Use `--help` to view options.
