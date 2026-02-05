@@ -1,5 +1,3 @@
-"""Resolve tag labels to Wikidata QIDs with optional SPARQL fallback."""
-
 #!/usr/bin/env python3
 """Resolve Wikidata QIDs for previously harvested related tag labels.
 
@@ -574,6 +572,7 @@ def main() -> None:
 
     per_call_sleep = (min(args.min_sleep, args.max_sleep), max(args.min_sleep, args.max_sleep))
 
+    written_files: List[str] = []
     overall_total = 0
     overall_resolved = 0
     overall_unresolved = 0
@@ -598,6 +597,7 @@ def main() -> None:
             per_call_sleep=per_call_sleep,
             fallback_exact_label=not args.no_fallback,
         )
+        written_files.append(output_path)
 
         overall_total += stats["total"]
         overall_resolved += stats["resolved"]
@@ -614,6 +614,58 @@ def main() -> None:
         f"resolved {overall_resolved}/{overall_total} tags ({resolved_pct:.1f}%), "
         f"unresolved {overall_unresolved} ({unresolved_pct:.1f}%)."
     )
+
+    # ---------------------------------------------
+    # Output summary (what was stored and where)
+    # ---------------------------------------------
+
+    def _human_size(num_bytes: int) -> str:
+        if num_bytes < 1024:
+            return f"{num_bytes} B"
+        if num_bytes < 1024**2:
+            return f"{num_bytes / 1024:.2f} KB"
+        if num_bytes < 1024**3:
+            return f"{num_bytes / (1024**2):.2f} MB"
+        return f"{num_bytes / (1024**3):.2f} GB"
+
+    def _jsonl_preview(path: str) -> str:
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                for line in handle:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    obj = json.loads(line)
+                    if isinstance(obj, dict):
+                        keys = sorted(obj.keys())
+                        return f"first_record_keys={keys}"
+                    return f"first_record_type={type(obj).__name__}"
+        except Exception as exc:  # pragma: no cover - best effort logging only
+            return f"preview_error={type(exc).__name__}"
+        return "empty_file"
+
+    # de-dupe while preserving order
+    uniq_written: List[str] = []
+    seen: set[str] = set()
+    for path in written_files:
+        if path in seen:
+            continue
+        seen.add(path)
+        uniq_written.append(path)
+
+    print("\n[3_RESOLVE_TAG_QIDS] Output summary")
+    if not uniq_written:
+        print("No output files recorded.")
+    else:
+        print(f"Recorded {len(uniq_written)} output file(s):")
+        for path in uniq_written:
+            abs_path = os.path.abspath(path)
+            if not os.path.exists(path):
+                print(f" - {abs_path} (missing)")
+                continue
+            size = _human_size(os.path.getsize(path))
+            preview = _jsonl_preview(path)
+            print(f" - {abs_path} ({size}) {preview}")
 
 
 if __name__ == "__main__":

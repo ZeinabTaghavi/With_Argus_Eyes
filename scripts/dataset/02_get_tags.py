@@ -480,6 +480,8 @@ def main() -> None:
     global PARALLELISM
     PARALLELISM = int(args.parallelism)
 
+    written_files = []
+
     all_qs = []
     total_all_items = []
     all_num = 0
@@ -536,6 +538,8 @@ def main() -> None:
     print(f"Merging items with tags from {base_path}")
     print(f"Total items: {len(total_all_items)}")
     all_items = merge_items_with_tags(total_all_items, base_path)
+    # merge_items_with_tags always writes this combined file
+    written_files.append(f"{base_path}/all_prev_items.jsonl")
     print(f"Total items after merging: {len(all_items)}")
     print(f"Total items to process: {len(all_items)}")
 
@@ -566,11 +570,14 @@ def main() -> None:
         with open(out_put_path, "w") as f:
             for item in all_items_with_tags:
                 f.write(json.dumps(item) + "\n")
+        written_files.append(out_put_path)
 
         if failures:
-            with open(f"{base_path}/failed_items_{start_idx}_{end_idx}.jsonl", "w") as f:
+            failed_path = f"{base_path}/failed_items_{start_idx}_{end_idx}.jsonl"
+            with open(failed_path, "w") as f:
                 for item in failures:
                     f.write(json.dumps(item) + "\n")
+            written_files.append(failed_path)
 
     # ---------- landmarks_low_freq ----------
     low_freq_path = "./data/interim/2_landmarks_low_freq.jsonl"
@@ -600,10 +607,12 @@ def main() -> None:
             with open("./data/interim/2_landmarks_low_freq.jsonl", "w") as f:
                 for item in low_with_tags:
                     f.write(json.dumps(item) + "\n")
+            written_files.append("./data/interim/2_landmarks_low_freq.jsonl")
         if low_failures:
             with open("./data/interim/2_failed_landmarks_low_freq.jsonl", "w") as f:
                 for item in low_failures:
                     f.write(json.dumps(item) + "\n")
+            written_files.append("./data/interim/2_failed_landmarks_low_freq.jsonl")
 
     # ---------- landmarks_high_freq ----------
     high_freq_path = "./data/interim/2_landmarks_high_freq.jsonl"
@@ -649,10 +658,68 @@ def main() -> None:
             with open("./data/interim/2_landmarks_high_freq.jsonl", "w") as f:
                 for item in high_with_tags:
                     f.write(json.dumps(item) + "\n")
+            written_files.append("./data/interim/2_landmarks_high_freq.jsonl")
         if high_failures:
             with open("./data/interim/2_failed_landmarks_high_freq.jsonl", "w") as f:
                 for item in high_failures:
                     f.write(json.dumps(item) + "\n")
+            written_files.append("./data/interim/2_failed_landmarks_high_freq.jsonl")
+
+    # ---------------------------------------------
+    # Output summary (what was stored and where)
+    # ---------------------------------------------
+
+    def _human_size(num_bytes: int) -> str:
+        if num_bytes < 1024:
+            return f"{num_bytes} B"
+        if num_bytes < 1024 ** 2:
+            return f"{num_bytes / 1024:.2f} KB"
+        if num_bytes < 1024 ** 3:
+            return f"{num_bytes / (1024 ** 2):.2f} MB"
+        return f"{num_bytes / (1024 ** 3):.2f} GB"
+
+    def _jsonl_preview(path: str) -> str:
+        """
+        Return a short preview string describing what the JSONL contains,
+        without scanning the entire file.
+        """
+        try:
+            with open(path, "r") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    obj = json.loads(line)
+                    if isinstance(obj, dict):
+                        keys = sorted(obj.keys())
+                        return f"first_record_keys={keys}"
+                    return f"first_record_type={type(obj).__name__}"
+        except Exception as e:
+            return f"preview_error={type(e).__name__}"
+        return "empty_file"
+
+    # de-dupe while preserving order
+    uniq_written = []
+    seen = set()
+    for p in written_files:
+        if p in seen:
+            continue
+        seen.add(p)
+        uniq_written.append(p)
+
+    print("\n[2_GET_TAGS] Output summary")
+    if not uniq_written:
+        print("No output files recorded.")
+    else:
+        print(f"Recorded {len(uniq_written)} output file(s):")
+        for p in uniq_written:
+            abs_p = os.path.abspath(p)
+            if not os.path.exists(p):
+                print(f" - {abs_p} (missing)")
+                continue
+            size = _human_size(os.path.getsize(p))
+            preview = _jsonl_preview(p)
+            print(f" - {abs_p} ({size}) {preview}")
 
 
 if __name__ == "__main__":
