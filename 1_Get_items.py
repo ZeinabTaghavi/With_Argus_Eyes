@@ -1,6 +1,7 @@
 import os
 # 1️⃣ Pick an absolute path that has enough space
-BASE = "../../../../data/proj/zeinabtaghavi"
+# Keep directory conventions consistent with scripts/dataset/01_get_items.py
+BASE = os.environ.get("ARGUS_HF_BASE") or os.environ.get("HF_HOME") or "./"
 
 # 2️⃣ Point both caches there ─ before any HF import
 os.environ["HF_HOME"]          = BASE          # makes <BASE>/hub and <BASE>/datasets
@@ -21,8 +22,8 @@ import argparse
 API = "https://www.wikidata.org/w/api.php"
 HEADERS = {"User-Agent": "WikidataSampler/0.3 (research; your-email@example.com)"}
 
-DB_PATH = "wikidata_random.db"          # disk-backed dedup + resume
-OUT_PATH = "./1_Dataset_Construction/temp_data/1_wikidata_random_labels.jsonl.gz"  # compressed output
+DB_PATH = "./data/interim/1_wikidata_random.db"          # disk-backed dedup + resume
+OUT_PATH = "./data/interim/1_wikidata_random_labels_0M.jsonl.gz"  # compressed output
 
 
 # -------------------------------
@@ -363,7 +364,7 @@ if __name__ == "__main__":
                         help="Path to SQLite DB (defaults to DB_PATH or $WIKIDATA_DB_PATH)")
     parser.add_argument("--out", type=str, default=None,
                         help="Path to output gzip JSONL (defaults to OUT_PATH)")
-    parser.add_argument("--target_total", type=int, default=2000000,
+    parser.add_argument("--target_total", type=int, default=1000000,
                         help="Target unique QIDs to collect into 'seen'")
     parser.add_argument("--qid_workers", type=int, default=None,
                         help="Workers for random QID collection")
@@ -371,7 +372,7 @@ if __name__ == "__main__":
                         help="Workers for labeling API calls")
     parser.add_argument("--lang", nargs="+", default=["en"],
                         help="Language fallback order for labels")
-    parser.add_argument("--batch_unlabeled", type=int, default=50_000,
+    parser.add_argument("--batch_unlabeled", type=int, default=50000,
                         help="Batch size for fetching unlabeled QIDs")
     parser.add_argument("--export_only", action="store_true",
                         help="Skip API; export all labels from existing DB to gzip")
