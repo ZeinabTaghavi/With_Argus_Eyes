@@ -2,8 +2,6 @@
 
 import argparse
 import os
-import subprocess
-import shutil
 
 import json
 import requests
@@ -14,21 +12,12 @@ import numpy as np
 
 import math
 from p_tqdm import p_map
-import glob
-from tqdm import tqdm, trange
+from tqdm import trange
+
 
 
 
 WDQS_ENDPOINT = "https://query.wikidata.org/sparql"
-
-# --- Tunables (be polite to WDQS!) ---
-PARALLELISM = 8        # 2–4 is a good citizen; raise carefully
-PER_CALL_SLEEP = (0.15, 0.45)  # small jitter per process between calls
-# NOTE: The new wbgetentities-batched path is preferred and ignores these.
-
-M_DEFAULT = 20
-SPLIT_SIZE_DEFAULT = 100000
-HF_BASE_DEFAULT = None
 
 # -------------------------------
 # HTTP helpers (robust + polite)
@@ -89,6 +78,10 @@ def request_json_with_backoff(session, url, *, params=None, max_retries=6, base_
         pass
     raise RuntimeError(f"Failed after {max_retries} attempts. Last status={getattr(last_resp,'status_code',None)}. Snippet: {snippet!r}")
 
+
+# -------------------------------
+# Query builders + callers
+# -------------------------------
 
 # -------------------------------
 # Query builders + callers
@@ -284,6 +277,19 @@ def get_item_properties(
     return {"QID": qid, "label": item_label or qid, "claims": claims}
 
 
+# pip install p_tqdm if you haven't already
+from p_tqdm import p_map
+import random, time
+
+# --- Tunables (be polite to WDQS!) ---
+PARALLELISM = 8        # 2–4 is a good citizen; raise carefully
+PER_CALL_SLEEP = (0.15, 0.45)  # small jitter per process between calls
+# NOTE: The new wbgetentities-batched path is preferred and ignores these.
+
+M_DEFAULT = 20
+SPLIT_SIZE_DEFAULT = 100000
+HF_BASE_DEFAULT = None
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Fetch related tags for Wikidata items.")
@@ -293,46 +299,11 @@ def parse_args() -> argparse.Namespace:
         default=HF_BASE_DEFAULT,
         help="Base path for HF caches (falls back to $ARGUS_HF_BASE, then $HF_HOME, then ./).",
     )
-    parser.add_argument(
-        "--hf_hub_cache",
-        type=str,
-        default=None,
-        help="Path for Hugging Face hub cache ($HF_HUB_CACHE). Defaults to <hf_base>/hub if not set.",
-    )
-    parser.add_argument(
-        "--hf_datasets_cache",
-        type=str,
-        default=None,
-        help="Path for Hugging Face datasets cache ($HF_DATASETS_CACHE). Defaults to <hf_base>/datasets if not set.",
-    )
     parser.add_argument("--m_million", type=int, default=M_DEFAULT, help="Read input labels from 1_wikidata_random_labels_{M}M.jsonl.")
     parser.add_argument("--parallelism", type=int, default=PARALLELISM, help="Parallel workers for WDQS calls.")
     parser.add_argument("--split_size", type=int, default=SPLIT_SIZE_DEFAULT, help="Chunk size per output split.")
     parser.add_argument("--base_path", type=str, default="./data/interim/2_tag_only", help="Output folder for tag-only splits.")
-    args = parser.parse_args()
-
-    # HF cache setup:
-    # - CLI flags win
-    # - otherwise keep existing env if present
-    # - otherwise derive from base
-    base = args.hf_base or os.environ.get("ARGUS_HF_BASE") or os.environ.get("HF_HOME") or "./"
-    if args.hf_base:
-        os.environ["HF_HOME"] = base
-    else:
-        os.environ.setdefault("HF_HOME", base)  # makes <BASE>/hub and <BASE>/datasets
-
-    if args.hf_hub_cache:
-        os.environ["HF_HUB_CACHE"] = args.hf_hub_cache
-    else:
-        os.environ.setdefault("HF_HUB_CACHE", f"{base}/hub")
-
-    if args.hf_datasets_cache:
-        os.environ["HF_DATASETS_CACHE"] = args.hf_datasets_cache
-    else:
-        os.environ.setdefault("HF_DATASETS_CACHE", f"{base}/datasets")
-
-    return args
-
+    return parser.parse_args()
 def _compute_related_tags_for_item(item,
                                    language="en",
                                    user_agent="YourAppName/1.0 (you@example.com)"):
@@ -387,6 +358,9 @@ def _compute_related_tags_for_item(item,
 
 
 
+import glob
+from tqdm import tqdm
+
 def _canon_label(s: str) -> str:
     """Canonicalize labels for stable, fast membership checks."""
     if not isinstance(s, str):
@@ -436,46 +410,20 @@ def merge_items_with_tags(all_items, base_path):
                 if _canon_label(it.get("label", "")) not in seen_labels]
     return filtered
 
-# ---------------------------------------------
-# Process landmarks_low_freq and landmarks_high_freq
-# ---------------------------------------------
-
-def _escape_sparql_literal(value: str) -> str:
-    return value.replace("\\", "\\\\").replace('"', '\\"')
-
-def resolve_qid_by_exact_label(label: str,
-                               language: str = "en",
-                               user_agent: str = "YourAppName/1.0 (you@example.com)"):
-    """
-    Resolve a Wikidata QID by exact label match in the given language.
-    Returns the first QID found or None if not found.
-    """
-    session = make_session(user_agent=user_agent)
-    safe_label = _escape_sparql_literal(label)
-    query = f"""
-    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-    SELECT (STRAFTER(STR(?item), "/entity/") AS ?qid)
-    WHERE {{
-      ?item rdfs:label "{safe_label}"@{language} .
-    }}
-    LIMIT 1
-    """
-
-    data = request_json_with_backoff(
-        session,
-        WDQS_ENDPOINT,
-        params={"query": query},
-        max_retries=6,
-        base_sleep=1.0,
-    )
-    rows = data.get("results", {}).get("bindings", [])
-    if not rows:
-        return None
-    return rows[0].get("qid", {}).get("value")
-
 
 def main() -> None:
     args = parse_args()
+
+    # HF cache setup
+    base = args.hf_base or os.environ.get("ARGUS_HF_BASE") or os.environ.get("HF_HOME") or "./"
+    if args.hf_base:
+        os.environ["HF_HOME"] = base
+        os.environ["HF_HUB_CACHE"] = f"{base}/hub"
+        os.environ["HF_DATASETS_CACHE"] = f"{base}/datasets"
+    else:
+        os.environ.setdefault("HF_HOME", base)
+        os.environ.setdefault("HF_HUB_CACHE", f"{base}/hub")
+        os.environ.setdefault("HF_DATASETS_CACHE", f"{base}/datasets")
 
     global PARALLELISM
     PARALLELISM = int(args.parallelism)
@@ -485,38 +433,7 @@ def main() -> None:
     all_num = 0
     M = args.m_million
 
-    def _ensure_unzipped(jsonl_path: str) -> str:
-        """
-        Ensure `jsonl_path` exists. If it's missing but a `.gz` exists next to it,
-        decompress via `gzip -dk` (keep .gz) with a Python fallback.
-        Returns the path to the uncompressed JSONL.
-        """
-        if os.path.exists(jsonl_path):
-            return jsonl_path
-
-        gz_path = f"{jsonl_path}.gz"
-        if not os.path.exists(gz_path):
-            raise FileNotFoundError(
-                f"Missing input file: {jsonl_path} (and also not found: {gz_path}). "
-                f"Did you run 01_get_items for M={M} or set --m_million correctly?"
-            )
-
-        # Try system gzip first (fast, keeps .gz with -k)
-        try:
-            subprocess.run(["gzip", "-dk", gz_path], check=True)
-        except FileNotFoundError:
-            # Fallback: pure-Python gunzip
-            import gzip
-
-            with gzip.open(gz_path, "rb") as fin, open(jsonl_path, "wb") as fout:
-                shutil.copyfileobj(fin, fout)
-
-        if not os.path.exists(jsonl_path):
-            raise FileNotFoundError(f"Failed to decompress {gz_path} to {jsonl_path}")
-        return jsonl_path
-
-    in_path = _ensure_unzipped(f"./data/interim/1_wikidata_random_labels_{M}M.jsonl")
-    with open(in_path, "r") as f:
+    with open(f"./data/interim/1_wikidata_random_labels_{M}M.jsonl", "r") as f:
         for line in f:
             all_num += 1
             item = json.loads(line)

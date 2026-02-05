@@ -11,6 +11,7 @@ import requests
 import multiprocessing as mp
 from typing import List, Tuple, Optional, Iterable
 from p_tqdm import p_imap, p_umap
+from tqdm import tqdm
 import argparse
 
 API = "https://www.wikidata.org/w/api.php"
@@ -262,9 +263,14 @@ def collect_qids_streaming(target_total: int,
         payloads = [per_task] * n_tasks
 
         print(f"[qids] round {round_idx} | have={have} | planning {n_tasks} tasks x {per_task} ≈ {planned}")
-        # p_imap streams results task-by-task (low RAM)
-        for lst in p_imap(fetch_random_qids_worker, payloads, num_cpus=workers):
-            insert_seen(con, lst)
+        if workers == 1:
+            for payload in tqdm(payloads, desc="[qids] tasks", total=len(payloads)):
+                lst = fetch_random_qids_worker(payload)
+                insert_seen(con, lst)
+        else:
+            # p_imap streams results task-by-task (low RAM)
+            for lst in p_imap(fetch_random_qids_worker, payloads, num_cpus=workers):
+                insert_seen(con, lst)
 
         new_have = seen_count(con)
         print(f"[qids] round {round_idx} | unique total now {new_have} (+{new_have - have})")
@@ -309,8 +315,13 @@ def label_qids_streaming(batch_unlabeled: int = 50000,
         chunks = [unlabeled[i:i+50] for i in range(0, len(unlabeled), 50)]
         print(f"[labels] labeling {len(unlabeled)} qids in {len(chunks)} chunks using {workers} workers")
 
-        # Parallel call; returns list of lists
-        results = p_umap(labels_for_chunk_worker, chunks, [lang_order] * len(chunks), num_cpus=workers)
+        if workers == 1:
+            results = []
+            for chunk in tqdm(chunks, desc="[labels] chunks", total=len(chunks)):
+                results.append(labels_for_chunk_worker(chunk, lang_order))
+        else:
+            # Parallel call; returns list of lists
+            results = p_umap(labels_for_chunk_worker, chunks, [lang_order] * len(chunks), num_cpus=workers)
 
         # Stream insert + write to gzip
         total_written = 0
