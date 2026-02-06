@@ -892,12 +892,12 @@ def main():
     3. Get one-hop-related-tags for each tag
     4. Optionally fetch Wikipedia first paragraphs for tags and save to separate file.
     """
-    input_file = "./data/interim/5_items_with_wikipedia_and_desc.jsonl"
+    input_file = "./data/interim/4_items_with_wikipedia.jsonl"
     
     # Create output filenames
     basename = os.path.basename(input_file)
-    output_file = os.path.join("./data/interim/6_items_with_tags_qids.jsonl")
-    tags_wikipedia_output_file = os.path.join("./data/interim/6_tags_wikipedia_first_paragraphs.jsonl")
+    output_file = os.path.join("./data/interim/5_items_with_tags_qids.jsonl")
+    tags_wikipedia_output_file = os.path.join("./data/interim/5_tags_wikipedia_first_paragraphs.jsonl")
     
     stats = process_file(input_file, output_file, tags_wikipedia_output_path=tags_wikipedia_output_file)
     if stats:

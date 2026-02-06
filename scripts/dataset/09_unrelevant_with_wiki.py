@@ -17,19 +17,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--wikipedia_pages",
         type=str,
-        default=os.path.join("data", "interim", "7_all_wikipedia_pages.jsonl"),
+        default=os.path.join("data", "interim", "6_all_wikipedia_pages.jsonl"),
         help="Wikipedia pages JSONL path.",
     )
     parser.add_argument(
         "--unrelevant_tags",
         type=str,
-        default="data/interim/7_unrelevant_qids.jsonl",
+        default="data/interim/6_unrelevant_qids.jsonl",
         help="Unrelevant tags JSONL path.",
     )
     parser.add_argument(
         "--output",
         type=str,
-        default="./data/interim/7_wiki_unrelevants_results.jsonl",
+        default="./data/interim/6_wiki_unrelevants_results.jsonl",
         help="Output JSONL path.",
     )
     return parser.parse_args()

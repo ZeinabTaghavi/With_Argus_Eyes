@@ -1,7 +1,7 @@
 """Build a qid -> related_tags mapping for unrelevant sampling.
 
-Input: JSONL of items with `qid` and `related_tags` (e.g., 7_main_dataset.jsonl
-or 6_items_with_tags_qids.jsonl).
+Input: JSONL of items with `qid` and `related_tags` (e.g., 6_main_dataset.jsonl
+or 5_items_with_tags_qids.jsonl).
 Output: JSON dict mapping qid -> {qid, label, related_tags:[{qid,label},...]}.
 """
 
@@ -11,17 +11,17 @@ import os
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Build 7_all_relation_tags.json from a JSONL dataset.")
+    parser = argparse.ArgumentParser(description="Build 6_all_relation_tags.json from a JSONL dataset.")
     parser.add_argument(
         "--input",
         type=str,
-        default="./data/interim/7_main_dataset.jsonl",
-        help="Input JSONL (e.g., 7_main_dataset.jsonl or 6_items_with_tags_qids.jsonl).",
+        default="./data/interim/6_main_dataset.jsonl",
+        help="Input JSONL (e.g., 6_main_dataset.jsonl or 5_items_with_tags_qids.jsonl).",
     )
     parser.add_argument(
         "--output",
         type=str,
-        default="./data/interim/7_all_relation_tags.json",
+        default="./data/interim/6_all_relation_tags.json",
         help="Output JSON path for qid->related_tags mapping.",
     )
     return parser.parse_args()

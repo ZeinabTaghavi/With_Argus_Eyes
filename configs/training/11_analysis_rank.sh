@@ -14,7 +14,7 @@ ROOT_DIR="$( cd "${SCRIPT_DIR}/../.." && pwd )"
 cd "${ROOT_DIR}"
 
 # ------------------------------------------------------------------
-# HF caching (same convention as 11_embedding_rank.py)
+# HF caching (same convention as 10_embedding_rank.py)
 # ------------------------------------------------------------------
 export HF_BASE="../../../../data/proj/zeinabtaghavi"
 export HF_HOME="${HF_BASE}"
@@ -30,20 +30,18 @@ echo "HF_DATASETS_CACHE:   ${HF_DATASETS_CACHE}"
 # Configurable knobs
 # ------------------------------------------------------------------
 # Choose retrievers and orders to evaluate; these must match the output
-# of your 11_embedding_rank.py script.
+# of your 10_embedding_rank.py script.
 # "contriever" "reasonir" "qwen3" "jina" "bge-m3" "reason-embed" "nv-embed" "gritlm" 
 # 0: reasonir  jina
 # 1: qwen3 bge-m3
 # 2: reason-embed nv-embed gritlm
 # "qwen3" "reason-embed" "nv-embed" "reasonir"
-# configs/training/12_analysis_rank.sh
+# configs/training/11_analysis_rank.sh
 export CUDA_VISIBLE_DEVICES="2"
 RETRIEVERS=("nv-embed")
 ORDERS=(800)
 K=(10 20)
 OUT_DIR="outputs/9_risk_outputs"
-
-cp ../../../../data/proj/zeinabtaghavi/embeddings/"${RETRIEVERS}"_span.npz outputs/cache/embedding_cache/embeddings/
 
 # Histogram sampling configuration
 HISTOGRAM_BINS=100
@@ -72,7 +70,7 @@ for k in "${K[@]}"; do
       echo "==============================================="
 
       # Run the analysis script; ensure the final line does not end with a backslash.
-      python scripts/training/12_analysis_rank.py \
+      python scripts/training/11_analysis_rank.py \
         --retriever "${retriever}" \
         --order "${order}" \
         --k "${k}" \

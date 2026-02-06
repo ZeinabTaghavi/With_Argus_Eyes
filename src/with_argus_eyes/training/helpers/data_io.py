@@ -32,15 +32,10 @@ def load_phrase_cache(retriever: str, phrase_type: str) -> Dict[str, np.ndarray]
     return {t: e for t, e in zip(texts, embeds)}
 
 def phrase_key_for_item(item: dict, phrase_type: str) -> str:
-    label = (item.get("label") or item.get("item_label") or "").strip()
-    if phrase_type == "label":
-        return label
-    elif phrase_type == "wikipedia_first_paragraph":
-        paragraph = (item.get("wikipedia_first_paragraph") or "").strip()
-        # return paragraph if (label and label in paragraph) else f"{label} : {paragraph}"
-        return f"{label} : {paragraph}"
-    elif phrase_type == "wikidata_description":
-        desc = (item.get("wikidata_description") or "").strip()
-        return desc if (label and label in desc) else f"{label} : {desc}"
-    else:
-        raise ValueError(f"Unknown phrase_type: {phrase_type}")
+    if phrase_type != "wikipedia_first_paragraph":
+        raise ValueError(
+            f"Unsupported phrase_type={phrase_type!r}. "
+            "Only 'wikipedia_first_paragraph' is supported in the current pipeline."
+        )
+    paragraph = (item.get("wikipedia_first_paragraph") or "").strip()
+    return paragraph

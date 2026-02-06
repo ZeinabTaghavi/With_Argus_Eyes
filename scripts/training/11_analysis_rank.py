@@ -108,8 +108,9 @@ def _ensure_wikipedia_texts() -> Dict[str, str]:
                 paragraph = record["wikipedia_first_paragraph"]
                 if not qid or not paragraph:
                     raise ValueError(f"No qid or paragraph found for record: {record}")
-                label = record["label"]
-                text = f"{label} : {paragraph}" if label and label not in paragraph else paragraph
+                text = paragraph.strip()
+                if not text:
+                    raise ValueError(f"Empty wikipedia_first_paragraph for qid={qid}")
                 mapping[qid] = text
     except FileNotFoundError as exc:
         raise FileNotFoundError(
@@ -152,48 +153,7 @@ def _extract_qid_from_item(item: Dict[str, Any]) -> str:
 
 def _resolve_phrase_text(item: Dict[str, Any]) -> str:
     qid = _extract_qid_from_item(item)
-    try:
-        return _canonical_text_for_qid(qid)
-    except KeyError:
-        fallback = _build_fallback_phrase_text(item)
-        if fallback:
-            return fallback
-        raise ValueError(f"Unable to build fallback text for item {qid}")
-
-
-def _build_fallback_phrase_text(item: Dict[str, Any]) -> str:
-    """Construct a best-effort textual representation if cached wikipedia text is missing."""
-    paragraph = (item.get("wikipedia_first_paragraph") or "").strip()
-    label = (
-        item.get("label")
-        or item.get("item_label")
-        or item.get("title")
-        or item.get("name")
-        or ""
-    ).strip()
-    if paragraph:
-        return f"{label} : {paragraph}" if label and label not in paragraph else paragraph
-
-    related_labels: list[str] = []
-    related = item.get("related_tags")
-    if isinstance(related, list):
-        for tag in related:
-            if isinstance(tag, dict):
-                tag_label = (tag.get("label") or tag.get("name") or "").strip()
-            else:
-                tag_label = str(tag).strip()
-            if tag_label:
-                related_labels.append(tag_label)
-            if len(related_labels) == 5:
-                break
-
-    if label and related_labels:
-        return f"{label} : related tags -> {', '.join(related_labels)}"
-    if label:
-        return label
-    if related_labels:
-        return ", ".join(related_labels)
-    return ""
+    return _canonical_text_for_qid(qid)
 
 
 def _get_retriever_instance(retriever_name: str) -> Any:
@@ -206,30 +166,6 @@ def _get_retriever_instance(retriever_name: str) -> Any:
     return retriever
 
 
-def _guess_label(item: Dict[str, Any] | None) -> str:
-    if not item:
-        return ""
-    candidates = (
-        item.get("label"),
-        item.get("item_label"),
-        item.get("title"),
-        item.get("name"),
-    )
-    for cand in candidates:
-        if isinstance(cand, str):
-            trimmed = cand.strip()
-            if trimmed:
-                return trimmed
-    nested = item.get("item") if isinstance(item, dict) else None
-    if isinstance(nested, dict):
-        for cand in (nested.get("label"), nested.get("name")):
-            if isinstance(cand, str):
-                trimmed = cand.strip()
-                if trimmed:
-                    return trimmed
-    return ""
-
-
 def _encode_texts_with_cache(
     retriever_name: str,
     texts: List[str],
@@ -239,12 +175,12 @@ def _encode_texts_with_cache(
 ) -> List[np.ndarray]:
     """Encode texts with persistent disk caching.
     
-    Uses Cache/embeddings/{retriever_name}_span.npz for storage.
+    Uses Cache/embeddings/{retriever_name}_wikipedia_paragraph.npz for storage.
     """
     if not texts:
         return []
 
-    cache_path = os.path.join(cache_dir, f"{retriever_name}_span.npz")
+    cache_path = os.path.join(cache_dir, f"{retriever_name}_wikipedia_paragraph.npz")
     
     # Load existing cache from disk
     cached_texts: List[str] = []
@@ -281,36 +217,21 @@ def _encode_texts_with_cache(
             qid = _extract_qid_from_item(item) if item else ""
         except Exception:
             qid = ""
-        label = _guess_label(item)
         missing_info[text] = {
             "qid": qid or "",
-            "label": label,
         }
     
     # Encode missing texts (if any) and extend cache
     if missing_info:
         retriever = _get_retriever_instance(retriever_name)
         missing_texts = list(missing_info.keys())
-        missing_labels: List[str] = []
         missing_qids: List[str] = []
         for text in missing_texts:
             meta = missing_info[text]
             qid = meta.get("qid", "")
-            label = meta.get("label", "")
-            if label:
-                phrase = label
-            else:
-                prefix = text.split(":", 1)[0].strip()
-                phrase = prefix if prefix else text[:128]
-            missing_labels.append(phrase)
             missing_qids.append(qid)
         print(f"[Cache] Encoding {len(missing_texts)} missing texts for {retriever_name}")
-        new_embeddings = retriever.encode_spans(
-            missing_texts,
-            missing_labels,
-            batch_size=batch_size,
-            max_length=1048,
-        )
+        new_embeddings = retriever.encode_texts(missing_texts, batch_size=batch_size, max_length=1048)
         new_embeddings = np.asarray(new_embeddings, dtype=np.float32)
         if cached_embeddings is not None and cached_embeddings.size > 0:
             if new_embeddings.shape[1] != cached_embeddings.shape[1]:
@@ -649,7 +570,7 @@ def main() -> None:
     # Workspace paths
     workspace_root = project_root
     WIKIPEDIA_PAGES_PATH = os.path.join(
-        workspace_root, "data", "interim", "7_all_wikipedia_pages.jsonl"
+        workspace_root, "data", "interim", "6_all_wikipedia_pages.jsonl"
     )
 
     # Cache directory

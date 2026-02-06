@@ -17,10 +17,10 @@ def wikipedia_page_cleaning(item):
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Final cleaning to build main dataset and Wikipedia pages file.")
-    parser.add_argument("--items_with_tags", type=str, default="./data/interim/6_items_with_tags_qids.jsonl")
-    parser.add_argument("--wikipedia_tags", type=str, default="./data/interim/6_tags_wikipedia_first_paragraphs.jsonl")
-    parser.add_argument("--output_wikipedia_pages", type=str, default="./data/interim/7_all_wikipedia_pages.jsonl")
-    parser.add_argument("--output_main_dataset", type=str, default="./data/interim/7_main_dataset.jsonl")
+    parser.add_argument("--items_with_tags", type=str, default="./data/interim/5_items_with_tags_qids.jsonl")
+    parser.add_argument("--wikipedia_tags", type=str, default="./data/interim/5_tags_wikipedia_first_paragraphs.jsonl")
+    parser.add_argument("--output_wikipedia_pages", type=str, default="./data/interim/6_all_wikipedia_pages.jsonl")
+    parser.add_argument("--output_main_dataset", type=str, default="./data/interim/6_main_dataset.jsonl")
     return parser.parse_args()
 
 

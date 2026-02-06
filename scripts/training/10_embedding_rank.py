@@ -161,19 +161,13 @@ emb_matrix: np.ndarray | None = None
 
 
 def _make_canonical_text_for_qid(qid: str) -> str:
-    """Canonical text used to embed a Wikipedia qid.
-
-    We standardize to:  "<label> : <wikipedia_first_paragraph>" if label not already in
-    the paragraph; otherwise we just use the paragraph.
-    """
+    """Canonical text used to embed a Wikipedia qid (paragraph only)."""
     rec = wikipedia_pages_dict.get(qid)
     if rec is None:
         raise KeyError(f"qid {qid} not found in wikipedia_pages_dict")
-    label = (rec.get("label") or "").strip()
-    para = rec["wikipedia_first_paragraph"]
-    if label and label not in para:
-        para = f"{label} : {para}"
-    assert label in para, f"label {label} not in paragraph {para}"
+    para = (rec.get("wikipedia_first_paragraph") or "").strip()
+    if not para:
+        raise ValueError(f"wikipedia_first_paragraph is empty for qid {qid}")
     return para
 
 
@@ -183,16 +177,16 @@ def build_qid_embedding_bank(
     qwen3_instruction: str = "",
     batch_size: int = 64,
 ) -> None:
-    """Precompute a dense span embedding for every Wikipedia qid and store it in memory and on disk.
+    """Precompute a paragraph embedding for every Wikipedia qid and store it in memory and on disk.
 
-    Uses persistent disk cache: Cache/embeddings/{retriever_name}_span.npz with three aligned arrays:
+    Uses persistent disk cache: Cache/embeddings/{retriever_name}_wikipedia_paragraph.npz with three aligned arrays:
       - qids:       list of qid strings
-      - texts:      list of canonical texts used for encoding (e.g., "label : paragraph")
-      - embeddings: span embeddings (label span within the canonical text), shape (N, D)
+      - texts:      list of canonical texts used for encoding (Wikipedia first paragraph)
+      - embeddings: paragraph embeddings, shape (N, D)
     """
     global qid2idx, emb_matrix
 
-    cache_path = os.path.join(cache_dir, f"{retriever_name}_span.npz")
+    cache_path = os.path.join(cache_dir, f"{retriever_name}_wikipedia_paragraph.npz")
 
     # Load existing cache: qids, texts, embeddings
     cached_qids: List[str] = []
@@ -209,7 +203,7 @@ def build_qid_embedding_bank(
             cached_texts = data["texts"].tolist()
             cached_embeddings = data["embeddings"].astype(np.float32)
             qid_to_idx_cache = {qid: idx for idx, qid in enumerate(cached_qids)}
-            print(f"[Cache] Loaded {len(cached_qids)} cached span embeddings from {cache_path}")
+            print(f"[Cache] Loaded {len(cached_qids)} cached paragraph embeddings from {cache_path}")
         except Exception as e:
             print(f"[warn] Could not load cache from {cache_path}: {e}")
             cached_qids = []
@@ -217,30 +211,20 @@ def build_qid_embedding_bank(
             cached_embeddings = None
             qid_to_idx_cache = {}
 
-    # Prepare canonical texts and labels for all qids
+    # Prepare canonical paragraph texts for all qids
     all_qids = list(wikipedia_pages_dict.keys())
     qid_to_text: Dict[str, str] = {}
-    qid_to_label: Dict[str, str] = {}
     for qid in all_qids:
-        rec = wikipedia_pages_dict.get(qid)
-        if rec is None:
-            raise KeyError(f"qid {qid} not found in wikipedia_pages_dict")
         text = _make_canonical_text_for_qid(qid)
         qid_to_text[qid] = text
-        lbl = (rec.get("label") or "").strip()
-        if not lbl:
-            raise ValueError(f"label is empty for qid {qid}")
-        qid_to_label[qid] = lbl
 
     # Determine which qids need encoding (based on cache)
     qids_to_encode: List[str] = []
     texts_to_encode: List[str] = []
-    phrases_to_encode: List[str] = []
     for qid in all_qids:
         if qid not in qid_to_idx_cache:
             qids_to_encode.append(qid)
             texts_to_encode.append(qid_to_text[qid])
-            phrases_to_encode.append(qid_to_label[qid])
 
     final_embeddings: np.ndarray | None = None
     final_qids: List[str] = []
@@ -256,28 +240,12 @@ def build_qid_embedding_bank(
             qwen3_instruction=qwen3_instruction,
         )
 
-        if not hasattr(retriever, "encode_spans"):
-            raise ValueError(f"Retriever {retriever_name!r} does not support span embeddings (encode_spans).")
-
         new_embs = []
-        for i in tqdm(range(0, len(texts_to_encode), batch_size), desc="Encoding new span embeddings", unit="batch"):
+        for i in tqdm(range(0, len(texts_to_encode), batch_size), desc="Encoding new paragraph embeddings", unit="batch"):
             batch_texts = texts_to_encode[i:i + batch_size]
-            batch_phrases = phrases_to_encode[i:i + batch_size]
-            # Filter out entries with empty phrases, if any (should not happen due to earlier check)
-            filtered_texts: List[str] = []
-            filtered_phrases: List[str] = []
-            for t, p in zip(batch_texts, batch_phrases):
-                if p:
-                    filtered_texts.append(t)
-                    filtered_phrases.append(p)
-            if not filtered_texts:
+            if not batch_texts:
                 continue
-            emb_batch = retriever.encode_spans(
-                filtered_texts,
-                filtered_phrases,
-                batch_size=1,
-                max_length=1048,
-            )
+            emb_batch = retriever.encode_texts(batch_texts, batch_size=batch_size, max_length=1048)
             new_embs.append(np.asarray(emb_batch, dtype=np.float32))
 
         new_embeddings = np.vstack(new_embs) if new_embs else np.zeros((0, 1), dtype=np.float32)
@@ -483,13 +451,13 @@ def main():
     # Input paths
     # ---------------------------
     NON_RELATION_TAGS_PATH = os.path.join(
-        workspace_root, "data", "interim", "7_wiki_unrelevants_results.jsonl"
+        workspace_root, "data", "interim", "6_wiki_unrelevants_results.jsonl"
     )
     WIKIPEDIA_PAGES_PATH = os.path.join(
-        workspace_root, "data", "interim", "7_all_wikipedia_pages.jsonl"
+        workspace_root, "data", "interim", "6_all_wikipedia_pages.jsonl"
     )
     MAIN_DATASET_PATH = os.path.join(
-        workspace_root, "data", "interim", "7_main_dataset.jsonl"
+        workspace_root, "data", "interim", "6_main_dataset.jsonl"
     )
 
     # ---------------------------

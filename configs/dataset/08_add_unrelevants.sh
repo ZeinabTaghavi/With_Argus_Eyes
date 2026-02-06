@@ -7,4 +7,5 @@ source "${THIS_DIR}/00_env.sh"
 
 PYTHON=${PYTHON:-python}
 
-"${PYTHON}" "${WORKSPACE_ROOT}/scripts/dataset/06_get_tags_second_depth.py"
+"${PYTHON}" "${WORKSPACE_ROOT}/scripts/dataset/08_add_unrelevants.py" \
+  --out "${ARGUS_INTERIM_ROOT}/6_unrelevant_qids.jsonl"

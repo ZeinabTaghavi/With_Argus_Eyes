@@ -10,7 +10,7 @@ import multiprocessing as mp
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Add irrelevant tags to the dataset.")
     parser.add_argument("--order", type=int, default=5000, help="Number of unrelevant tags to sample per qid.")
-    parser.add_argument("--out", type=str, default='./data/interim/7_unrelevant_qids.jsonl', help="Output JSONL path.")
+    parser.add_argument("--out", type=str, default='./data/interim/6_unrelevant_qids.jsonl', help="Output JSONL path.")
     parser.add_argument("--workers", type=int, default=os.cpu_count(), help="Number of worker processes.")
     return parser.parse_args()
 
@@ -121,13 +121,13 @@ def main() -> None:
     # -------------------------------------------------------------
     # Load inputs
     # -------------------------------------------------------------
-    with open('./data/interim/7_all_relation_tags.json', 'r') as f:
+    with open('./data/interim/6_all_relation_tags.json', 'r') as f:
         all_relation_tags = json.load(f)
-    print(f"Loaded {len(all_relation_tags)} entries from 7_all_relation_tags.json")
+    print(f"Loaded {len(all_relation_tags)} entries from 6_all_relation_tags.json")
 
-    with open('./data/interim/7_main_dataset.jsonl', 'r') as f:
+    with open('./data/interim/6_main_dataset.jsonl', 'r') as f:
         main_dataset = [json.loads(line) for line in f]
-    print(f"Loaded {len(main_dataset)} entries from 7_main_dataset.jsonl")
+    print(f"Loaded {len(main_dataset)} entries from 6_main_dataset.jsonl")
 
     # Build mapping: qid -> set(related_qids) and the global universe of qids
     all_qids_set = set()
@@ -156,8 +156,8 @@ if __name__ == "__main__":
 
 
 '''
-python scripts/dataset/09_add_unrelevants.py \
+python scripts/dataset/08_add_unrelevants.py \
   --order 5000 \
-  --out ./data/interim/7_unrelevant_qids.jsonl \
+  --out ./data/interim/6_unrelevant_qids.jsonl \
 
 '''
