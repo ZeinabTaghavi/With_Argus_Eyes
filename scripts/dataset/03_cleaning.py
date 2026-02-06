@@ -29,6 +29,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--low_out", type=str, default="./data/interim/3_landmarks_low_freq.jsonl")
     parser.add_argument("--high_in", type=str, default="./data/interim/2_landmarks_high_freq.jsonl")
     parser.add_argument("--high_out", type=str, default="./data/interim/3_landmarks_high_freq.jsonl")
+    parser.add_argument(
+        "--prune_inputs",
+        action="store_true",
+        help="After writing cleaned outputs, delete processed items_with_tags_*.jsonl input splits.",
+    )
     return parser.parse_args()
 
 
@@ -36,7 +41,9 @@ def main() -> None:
     args = parse_args()
 
     file_list = []
-    for file in glob.glob(os.path.join(args.input_dir, "*.jsonl")):
+    # Only consume the per-split tag outputs from 02_get_tags.py.
+    # (Avoid mixing in cache/debug files like all_prev_items.jsonl or failed_items_*.jsonl.)
+    for file in glob.glob(os.path.join(args.input_dir, "items_with_tags_*.jsonl")):
         file_list.append(file)
 
     print(len(file_list))
@@ -80,6 +87,16 @@ def main() -> None:
     with open(args.out_cleaned, "w") as f:
         for item in cleaned_items:
             f.write(json.dumps(item) + "\n")
+
+    if args.prune_inputs:
+        deleted = 0
+        for path in file_list:
+            try:
+                os.remove(path)
+                deleted += 1
+            except OSError:
+                continue
+        print(f"Pruned {deleted}/{len(file_list)} processed split file(s) from {args.input_dir}")
 
     # -------------------------------
     # Clean landmarks_low_freq

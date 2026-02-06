@@ -2,6 +2,7 @@
 
 import argparse
 import os
+import fnmatch
 
 import gzip
 import json
@@ -14,6 +15,8 @@ import numpy as np
 import math
 from p_tqdm import p_map
 from tqdm import trange
+import glob
+from tqdm import tqdm
 
 
 
@@ -304,6 +307,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--parallelism", type=int, default=PARALLELISM, help="Parallel workers for WDQS calls.")
     parser.add_argument("--split_size", type=int, default=SPLIT_SIZE_DEFAULT, help="Chunk size per output split.")
     parser.add_argument("--base_path", type=str, default="./data/interim/2_tag_only", help="Output folder for tag-only splits.")
+    parser.add_argument(
+        "--prune_merged_inputs",
+        action="store_true",
+        help=(
+            "After merging existing tag-only JSONLs into all_prev_items.jsonl, delete the merged "
+            "split files (items_with_tags_*.jsonl and failed_items_*.jsonl) to avoid redundancy."
+        ),
+    )
     return parser.parse_args()
 def _compute_related_tags_for_item(item,
                                    language="en",
@@ -359,8 +370,6 @@ def _compute_related_tags_for_item(item,
 
 
 
-import glob
-from tqdm import tqdm
 
 def _canon_label(s: str) -> str:
     """Canonicalize labels for stable, fast membership checks."""
@@ -370,23 +379,38 @@ def _canon_label(s: str) -> str:
     return unicodedata.normalize("NFKC", s).casefold().strip()
 
 
-def merge_items_with_tags(all_items, base_path):
+def merge_items_with_tags(all_items, base_path, *, prune_inputs: bool = False):
     """
     Build a set of previously-seen labels (canonicalized) from JSONL files under
     base_path, then filter all_items by that set. Uses a set (O(1) membership)
     and streams the combined file to avoid large in-memory lists.
     """
+    os.makedirs(base_path, exist_ok=True)
+
+    # Write via a temp file and swap to avoid truncating our own input
+    save_path = os.path.join(base_path, "all_prev_items.jsonl")
+    tmp_path = save_path + ".tmp"
+
     pattern = os.path.join(base_path, "*.jsonl")
     all_files = glob.glob(pattern)
 
-    seen_labels = set()
-    os.makedirs(base_path, exist_ok=True)
+    # Include the existing all_prev_items.jsonl as input (if present),
+    # but never write to it directly (we write to tmp_path instead).
+    input_files = []
+    save_abs = os.path.abspath(save_path)
+    tmp_abs = os.path.abspath(tmp_path)
+    for file in all_files:
+        abs_file = os.path.abspath(file)
+        if abs_file == tmp_abs:
+            continue
+        input_files.append(file)
 
-    # Write a combined JSONL of unique previous items while we scan, *without*
-    # storing all previous items in RAM.
-    save_path = f"{base_path}/all_prev_items.jsonl"
-    with open(save_path, "w") as out_f:
-        for file in tqdm(all_files, desc="Merging previous items"):
+    seen_labels = set()
+    deleted = 0
+    delete_patterns = ("items_with_tags_*.jsonl", "failed_items_*.jsonl")
+
+    with open(tmp_path, "w") as out_f:
+        for file in tqdm(sorted(input_files), desc="Merging previous items"):
             try:
                 with open(file, "r") as f:
                     for line in f:
@@ -403,13 +427,76 @@ def merge_items_with_tags(all_items, base_path):
                 # If a file got moved/deleted during the scan, skip it
                 continue
 
+            # Optionally prune merged split files to avoid redundancy.
+            if prune_inputs:
+                try:
+                    abs_file = os.path.abspath(file)
+                    if abs_file != save_abs:
+                        base = os.path.basename(file)
+                        if any(fnmatch.fnmatch(base, pat) for pat in delete_patterns):
+                            os.remove(file)
+                            deleted += 1
+                except Exception:
+                    # Best-effort cleanup only
+                    pass
+
+    os.replace(tmp_path, save_path)
+
     print(f"Saved {len(seen_labels)} unique previous items -> {save_path}")
     print(f"Total previous unique labels: {len(seen_labels)}")
+    if prune_inputs:
+        print(f"Pruned {deleted} merged split file(s) from {base_path}")
 
     # Fast O(1) membership using the canonicalized label
     filtered = [it for it in tqdm(all_items, desc="Filtering new items")
                 if _canon_label(it.get("label", "")) not in seen_labels]
     return filtered
+
+
+def _escape_sparql_literal(value: str) -> str:
+    """Escape a Python string for use as a SPARQL double-quoted literal."""
+    if not isinstance(value, str):
+        value = str(value)
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def resolve_qid_by_exact_label(
+    label: str,
+    *,
+    language: str = "en",
+    user_agent: str = "YourAppName/1.0 (you@example.com)",
+):
+    """
+    Resolve a Wikidata QID by exact label match in the given language.
+    Returns the first QID found or None if not found.
+    """
+    session = make_session(user_agent=user_agent)
+    try:
+        safe_label = _escape_sparql_literal(label)
+        query = f"""
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        SELECT (STRAFTER(STR(?item), "/entity/") AS ?qid)
+        WHERE {{
+          ?item rdfs:label "{safe_label}"@{language} .
+        }}
+        LIMIT 1
+        """
+        data = request_json_with_backoff(
+            session,
+            WDQS_ENDPOINT,
+            params={"query": query},
+            max_retries=6,
+            base_sleep=1.0,
+        )
+        rows = data.get("results", {}).get("bindings", [])
+        if not rows:
+            return None
+        return rows[0].get("qid", {}).get("value")
+    finally:
+        try:
+            session.close()
+        except Exception:
+            pass
 
 
 def main() -> None:
@@ -460,7 +547,11 @@ def main() -> None:
     base_path = args.base_path
     print(f"Merging items with tags from {base_path}")
     print(f"Total items: {len(total_all_items)}")
-    all_items = merge_items_with_tags(total_all_items, base_path)
+    all_items = merge_items_with_tags(
+        total_all_items,
+        base_path,
+        prune_inputs=bool(getattr(args, "prune_merged_inputs", False)),
+    )
     # merge_items_with_tags always writes this combined file
     written_files.append(f"{base_path}/all_prev_items.jsonl")
     print(f"Total items after merging: {len(all_items)}")
