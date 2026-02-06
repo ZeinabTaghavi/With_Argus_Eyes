@@ -649,7 +649,7 @@ def main() -> None:
     # Workspace paths
     workspace_root = project_root
     WIKIPEDIA_PAGES_PATH = os.path.join(
-        workspace_root, "data", "processed", "8_Emb_Rank", "7_all_wikipedia_pages.jsonl"
+        workspace_root, "data", "interim", "7_all_wikipedia_pages.jsonl"
     )
 
     # Cache directory

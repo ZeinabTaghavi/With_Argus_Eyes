@@ -22,7 +22,7 @@ export HF_AUTH_TOKEN="${HF_TOKEN:-}"
 
 export CUDA_VISIBLE_DEVICES="0"
 PYTHON=python
-SCRIPT="${WORKSPACE_ROOT}/scripts/training/08_embedding_rank.py"
+SCRIPT="${WORKSPACE_ROOT}/scripts/training/11_embedding_rank.py"
 
 # Which embedding backends to use for the qid bank
 RETRIEVERS=("contriever")   # add "contriever" "reasonir" "qwen3" "jina" "bge-m3" "reason-embed" "nv-embed" "gritlm" if you like

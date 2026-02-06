@@ -1,4 +1,4 @@
-python scripts/training/10b_rp_highlow_ratio.py \
+python scripts/training/13b_rp_highlow_ratio.py \
   --retrievers contriever reasonir qwen3 jina bge-m3  reason-embed nv-embed gritlm \
   --ks 10 25 50 100 \
   --orders 800 \
