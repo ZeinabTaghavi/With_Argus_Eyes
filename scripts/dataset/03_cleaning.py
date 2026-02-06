@@ -40,14 +40,15 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
 
+    written_files = []
+
     file_list = []
     # Only consume the per-split tag outputs from 02_get_tags.py.
     # (Avoid mixing in cache/debug files like all_prev_items.jsonl or failed_items_*.jsonl.)
     for file in glob.glob(os.path.join(args.input_dir, "items_with_tags_*.jsonl")):
         file_list.append(file)
 
-    print(len(file_list))
-    print(sorted(file_list))
+    print(f"Input splits found: {len(file_list)} (from {args.input_dir})")
 
     # Initialize empty list to store all items
     all_items = []
@@ -87,6 +88,7 @@ def main() -> None:
     with open(args.out_cleaned, "w") as f:
         for item in cleaned_items:
             f.write(json.dumps(item) + "\n")
+    written_files.append(args.out_cleaned)
 
     if args.prune_inputs:
         deleted = 0
@@ -135,6 +137,7 @@ def main() -> None:
         with open(low_freq_out, "w") as f:
             for item in cleaned_low:
                 f.write(json.dumps(item) + "\n")
+        written_files.append(low_freq_out)
 
     # -------------------------------
     # Clean landmarks_high_freq
@@ -173,6 +176,59 @@ def main() -> None:
         with open(high_freq_out, "w") as f:
             for item in cleaned_high:
                 f.write(json.dumps(item) + "\n")
+        written_files.append(high_freq_out)
+
+    # ---------------------------------------------
+    # Output summary (what was stored and where)
+    # ---------------------------------------------
+
+    def _human_size(num_bytes: int) -> str:
+        if num_bytes < 1024:
+            return f"{num_bytes} B"
+        if num_bytes < 1024**2:
+            return f"{num_bytes / 1024:.2f} KB"
+        if num_bytes < 1024**3:
+            return f"{num_bytes / (1024**2):.2f} MB"
+        return f"{num_bytes / (1024**3):.2f} GB"
+
+    def _jsonl_preview(path: str) -> str:
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                for line in handle:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    obj = json.loads(line)
+                    if isinstance(obj, dict):
+                        keys = sorted(obj.keys())
+                        return f"first_record_keys={keys}"
+                    return f"first_record_type={type(obj).__name__}"
+        except Exception as exc:
+            return f"preview_error={type(exc).__name__}"
+        return "empty_file"
+
+    # de-dupe while preserving order
+    uniq_written = []
+    seen = set()
+    for p in written_files:
+        if p in seen:
+            continue
+        seen.add(p)
+        uniq_written.append(p)
+
+    print("\n[3_CLEANING] Output summary")
+    if not uniq_written:
+        print("No output files recorded.")
+    else:
+        print(f"Recorded {len(uniq_written)} output file(s):")
+        for p in uniq_written:
+            abs_p = os.path.abspath(p)
+            if not os.path.exists(p):
+                print(f" - {abs_p} (missing)")
+                continue
+            size = _human_size(os.path.getsize(p))
+            preview = _jsonl_preview(p)
+            print(f" - {abs_p} ({size}) {preview}")
 
 
 if __name__ == "__main__":
