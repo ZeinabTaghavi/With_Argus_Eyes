@@ -13,3 +13,4 @@ PYTHON=${PYTHON:-python}
   --items_in "${ARGUS_INTERIM_ROOT}/3_cleaned_items_tag_only.jsonl" \
   --items_out "${ARGUS_INTERIM_ROOT}/4_items_with_wikipedia.jsonl" \
   --tags_cache_out "${ARGUS_INTERIM_ROOT}/4_tags_wikipedia_first_paragraphs_cache.jsonl"
+

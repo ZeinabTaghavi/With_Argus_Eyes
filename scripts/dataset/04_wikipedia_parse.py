@@ -13,6 +13,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 from multiprocessing import cpu_count
+import re
 # Prefer p_tqdm if available; else use tqdm.contrib.concurrent; else plain tqdm
 try:
     from p_tqdm import p_map  # pip install p_tqdm
@@ -230,6 +231,61 @@ def _fetch_first_paragraph(
     # First paragraph = text up to the first blank line
     return extract.strip().split("\n\n", 1)[0].strip()
 
+
+# ---------------------------------------------------------------------------
+# Wikipedia paragraph cleaning / validation
+# ---------------------------------------------------------------------------
+
+_DISALLOWED_LEADS = (
+    "may refer to",
+    "may also refer to",
+    "can refer to",
+    "can also refer to",
+    "may stand for",
+    "may mean",
+    "this category should only contain articles on species",
+)
+
+_DISALLOWED_SUBSTRINGS = (
+    "disambiguation",
+    "may refer to one of the following",
+    "refer to one of the following",
+    "this page lists articles",
+    "this disambiguation page",
+    "wikipedia does not have an article with this exact name",
+    "this category should only contain articles on species",
+)
+
+
+def _word_count(text: str) -> int:
+    return len(re.findall(r"\b\w+\b", text or ""))
+
+
+def clean_wikipedia_first_paragraph(text: str, *, min_words: int = 10) -> str | None:
+    """
+    Return a cleaned first paragraph if it looks like a real lead section.
+    Otherwise return None (illegal / not useful / disambiguation / too short).
+    """
+    if not isinstance(text, str):
+        return None
+    cleaned = " ".join(text.strip().split())
+    if not cleaned:
+        return None
+
+    lead = cleaned.casefold()
+    for prefix in _DISALLOWED_LEADS:
+        if lead.startswith(prefix):
+            return None
+
+    head = lead[:200]
+    if any(s in head for s in _DISALLOWED_SUBSTRINGS):
+        return None
+
+    if _word_count(cleaned) < int(min_words):
+        return None
+
+    return cleaned
+
 def first_paragraph_from_qid(qid: str, lang: str = "en") -> str:
     """
     Main entry: QID → (title, wiki_lang) → first paragraph.
@@ -254,13 +310,14 @@ def _process_one(item: dict) -> dict:
     try:
         title, wiki_lang = _get_wikipedia_title_from_qid(qid, lang=WIKI_LANGUAGE, user_agent=USER_AGENT)
         first_para = _fetch_first_paragraph(title, wiki_lang, user_agent=USER_AGENT)
+        first_para_clean = clean_wikipedia_first_paragraph(first_para)
         enriched = dict(item)
         enriched["qid"] = qid
         enriched["wikipedia_checked"] = True
-        enriched["wikipedia_exists"] = True
+        enriched["wikipedia_exists"] = bool(first_para_clean)
         enriched["wikipedia_lang"] = wiki_lang
         enriched["wikipedia_title"] = title
-        enriched["wikipedia_first_paragraph"] = first_para
+        enriched["wikipedia_first_paragraph"] = first_para_clean or ""
         enriched.pop("_user_agent", None)
         return enriched
     except (LookupError, ValueError, requests.RequestException):
@@ -421,12 +478,15 @@ def _process_one_tag(tag_name: str) -> dict | None:
     if not name:
         raise ValueError(f"Tag name is empty for {tag_name}")
     try:
-        first_para = _fetch_first_paragraph(name, "en", user_agent=USER_AGENT)
+        first_para = _fetch_first_paragraph(name, WIKI_LANGUAGE, user_agent=USER_AGENT)
+        first_para_clean = clean_wikipedia_first_paragraph(first_para)
+        if not first_para_clean:
+            return None
         return {
             "tag": name,
-            "wikipedia_lang": "en",
+            "wikipedia_lang": WIKI_LANGUAGE,
             "wikipedia_title": name,
-            "wikipedia_first_paragraph": first_para,
+            "wikipedia_first_paragraph": first_para_clean,
         }
     except (LookupError, ValueError, requests.RequestException):
         return None
@@ -455,7 +515,13 @@ def _load_tag_cache(path: str) -> dict[str, dict]:
                     raise Exception(f"Error loading tag cache from {path}: {line}")
                 tag = obj.get("tag")
                 if isinstance(tag, str) and tag:
-                    cache[tag] = obj
+                    # Drop any cached paragraphs that are no longer considered "legal"
+                    para = obj.get("wikipedia_first_paragraph", "")
+                    para_clean = clean_wikipedia_first_paragraph(para)
+                    if not para_clean:
+                        continue
+                    obj["wikipedia_first_paragraph"] = para_clean
+                    cache[tag.strip()] = obj
     except Exception:
         raise Exception(f"Error loading tag cache from {path}")
     return cache
@@ -520,11 +586,15 @@ def _augment_tags_first_paragraphs(tag_names: set[str], path_out: str, batch_siz
         return
 
     cache = _load_tag_cache(path_out) # the jsonl file with the format of {'tag', 'wikipedia_lang', 'wikipedia_title', 'wikipedia_first_paragraph'}
-    cached_tags = set([item['tag'] for item in cache])
-    missing = [t for t in tag_names if t not in cached_tags]
+    cached_tags = set(cache.keys())
+    wanted = {t.strip() for t in tag_names if isinstance(t, str) and t.strip()}
+    missing = sorted([t for t in wanted if t not in cached_tags])
 
     if not missing:
         print(f"No new tags to process. Cache already has {len(cache)} entries.")
+        # Still rewrite the cache so any previously-stored "soft"/illegal paragraphs get removed.
+        _save_tag_cache(cache, path_out)
+        print(f"Re-saved cleaned tag cache to: {path_out}")
         return
 
     print(f"Processing {len(missing)} missing tags in batches of {batch_size}...")
@@ -549,6 +619,28 @@ def _augment_tags_first_paragraphs(tag_names: set[str], path_out: str, batch_siz
         print(f"Processed {min(start + batch_size, len(missing))} / {len(missing)} tags. Saved progress to {path_out}.")
 
     print(f"Tags cache now contains {len(cache)} entries. Saved to: {path_out}")
+
+
+def _filter_related_tags_in_item(item: dict, legal_tags: set[str]) -> dict:
+    """
+    Remove related_tags that do not have a legal cached paragraph.
+    Returns a (possibly) new dict; also normalizes kept tags to stripped strings.
+    """
+    tags = item.get("related_tags")
+    if not isinstance(tags, list) or not tags:
+        return item
+    filtered: list[str] = []
+    for t in tags:
+        if not isinstance(t, str):
+            continue
+        s = t.strip()
+        if s and (s in legal_tags):
+            filtered.append(s)
+    if filtered == tags:
+        return item
+    out = dict(item)
+    out["related_tags"] = filtered
+    return out
 
 def main() -> None:
     """
@@ -596,6 +688,14 @@ def main() -> None:
                     qid = item.get('qid') or item.get('Q_number') or item.get('itemQ')
                     if qid:
                         item['qid'] = qid
+                        # Only keep items with a legal cached paragraph
+                        para = item.get("wikipedia_first_paragraph", "")
+                        para_clean = clean_wikipedia_first_paragraph(para)
+                        if not para_clean:
+                            continue
+                        item["wikipedia_first_paragraph"] = para_clean
+                        item.setdefault("wikipedia_checked", True)
+                        item.setdefault("wikipedia_exists", True)
                         existing_by_qid[qid] = item
         except Exception:
             existing_by_qid = {}
@@ -662,7 +762,9 @@ def main() -> None:
         os.makedirs(os.path.dirname(out_path), exist_ok=True)
         with open(out_path, 'w', encoding='utf-8') as f_out:
             for it in existing_by_qid.values():
-                f_out.write(json.dumps(it, ensure_ascii=False) + '\n')
+                # Only store items with a legal, non-empty Wikipedia first paragraph
+                if it.get("wikipedia_first_paragraph"):
+                    f_out.write(json.dumps(it, ensure_ascii=False) + '\n')
         if out_path not in written_files:
             written_files.append(out_path)
         remaining_est = max(0, len(items_to_process) - total_added)
@@ -670,24 +772,75 @@ def main() -> None:
 
         print(f"Processed {min(start + batch_size, len(items_to_process))} out of {len(items_to_process)} items and saved progress.")
 
+    # Final rewrite: ensure output only contains items with legal paragraphs (and cleaned text)
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    tmp_final = out_path + ".tmp"
+    with open(tmp_final, "w", encoding="utf-8") as f_out:
+        for it in existing_by_qid.values():
+            para = it.get("wikipedia_first_paragraph", "")
+            para_clean = clean_wikipedia_first_paragraph(para)
+            if not para_clean:
+                continue
+            obj = dict(it)
+            obj["wikipedia_first_paragraph"] = para_clean
+            obj.setdefault("wikipedia_checked", True)
+            obj.setdefault("wikipedia_exists", True)
+            f_out.write(json.dumps(obj, ensure_ascii=False) + "\n")
+    os.replace(tmp_final, out_path)
+    if out_path not in written_files:
+        written_files.append(out_path)
+
     # Summaries
     print(f"Total input items: {len(wikidata_items)}")
     print(f"Items needing (re)processing: {len(items_to_process)}")
-    print(f"Items with an English Wikipedia page (final): {len(existing_by_qid)}")
+    stored_items = sum(1 for it in existing_by_qid.values() if it.get("wikipedia_first_paragraph"))
+    print(f"Items stored with a legal Wikipedia paragraph (final): {stored_items}")
     print(f"Saved enriched items to: {out_path}")
 
-    # === NEW: Ensure Wikipedia first paragraphs for all encountered tags ===
-    # Collect tags from the main items.
-    print("Collecting tags from items...")
+    # === Tag Wikipedia first paragraph cache ===
+    # IMPORTANT: only process tags for items we are actually going to keep,
+    # i.e., items that have a legal, non-empty Wikipedia first paragraph.
+    kept_items = [it for it in existing_by_qid.values() if it.get("wikipedia_first_paragraph")]
+    print("Collecting tags from kept items...")
     all_tags: set[str] = set()
-    all_tags |= _collect_unique_tags_from_items(wikidata_items)
-
-    print(f"Collected {len(all_tags)} unique tags from items.")
+    all_tags |= _collect_unique_tags_from_items(kept_items)
+    print(f"Collected {len(all_tags)} unique tags from kept items.")
 
     # Build/extend the tags cache JSONL with first paragraphs.
-    _augment_tags_first_paragraphs(all_tags, TAGS_OUT_PATH, batch_size=max(1, int(args.tags_batch_size)))
-    if os.path.exists(TAGS_OUT_PATH):
-        written_files.append(TAGS_OUT_PATH)
+    # This function loads the existing cache (if any) and only processes missing tags.
+    if all_tags:
+        _augment_tags_first_paragraphs(all_tags, TAGS_OUT_PATH, batch_size=max(1, int(args.tags_batch_size)))
+        if os.path.exists(TAGS_OUT_PATH):
+            written_files.append(TAGS_OUT_PATH)
+    else:
+        print("[4_wikipedia_par] No kept items with tags; skipping tag paragraph cache update.")
+
+    # Filter related_tags based on legal tag paragraphs (present in the tag cache).
+    # If an item ends up with no related tags, we drop it (it won't help next-step tag expansion).
+    if os.path.exists(out_path) and os.path.exists(TAGS_OUT_PATH):
+        try:
+            tag_cache = _load_tag_cache(TAGS_OUT_PATH)
+            legal_tags = set(tag_cache.keys())
+        except Exception:
+            legal_tags = set()
+
+        if legal_tags:
+            tmp_out = out_path + ".tmp"
+            kept = 0
+            with open(out_path, "r", encoding="utf-8") as fin, open(tmp_out, "w", encoding="utf-8") as fout:
+                for line in fin:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        obj = json.loads(line)
+                    except Exception:
+                        continue
+                    obj = _filter_related_tags_in_item(obj, legal_tags)
+                    fout.write(json.dumps(obj, ensure_ascii=False) + "\n")
+                    kept += 1
+            os.replace(tmp_out, out_path)
+            print(f"[4_wikipedia_par] Filtered related_tags using tag cache; kept {kept} items.")
 
     # ---------------------------------------------
     # Output summary (what was stored and where)
