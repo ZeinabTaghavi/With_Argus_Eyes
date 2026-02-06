@@ -9,8 +9,4 @@ PYTHON=${PYTHON:-python}
 
 "${PYTHON}" "${WORKSPACE_ROOT}/scripts/dataset/03_cleaning.py" \
   --input_dir "${ARGUS_INTERIM_ROOT}/2_tag_only" \
-  --out_cleaned "${ARGUS_INTERIM_ROOT}/3_cleaned_items_tag_only.jsonl" \
-  --low_in "${ARGUS_INTERIM_ROOT}/2_landmarks_low_freq.jsonl" \
-  --low_out "${ARGUS_INTERIM_ROOT}/3_landmarks_low_freq.jsonl" \
-  --high_in "${ARGUS_INTERIM_ROOT}/2_landmarks_high_freq.jsonl" \
-  --high_out "${ARGUS_INTERIM_ROOT}/3_landmarks_high_freq.jsonl"
+  --out_cleaned "${ARGUS_INTERIM_ROOT}/3_cleaned_items_tag_only.jsonl"

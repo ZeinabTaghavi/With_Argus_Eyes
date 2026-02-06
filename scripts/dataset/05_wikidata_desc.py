@@ -23,7 +23,7 @@ API_URL = "https://www.wikidata.org/w/api.php"
 MAX_IDS_PER_CALL = 50  # MediaWiki Action API typical limit per request
 
 # Cache file for tag → Wikidata description
-TAGS_WD_OUT_PATH = "./data/interim/tags_wikidata_descriptions.jsonl"
+TAGS_WD_OUT_PATH = "./data/interim/5_tags_wikidata_descriptions.jsonl"
 
 
 def make_session() -> requests.Session:
@@ -326,7 +326,7 @@ def _collect_unique_tags_from_items(items: List[dict]) -> Set[str]:
     Looks for list-valued fields commonly used for tags.
     """
     tags: Set[str] = set()
-    candidate_keys = ("tags", "tag_list", "labels", "categories")
+    candidate_keys = ("tags", "tag_list", "labels", "categories", "related_tags")
     for it in items:
         for k in candidate_keys:
             v = it.get(k)
@@ -476,32 +476,81 @@ def process_and_clean_batch(batch_items: List[dict], lang: str = 'en') -> Tuple[
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Enrich items with Wikidata descriptions.")
-    parser.add_argument("--input_path", type=str, default="./data/interim/4_items_with_wikipedia.jsonl")
-    parser.add_argument("--output_path", type=str, default="./data/interim/5_items_with_wikipedia_and_desc.jsonl")
-    parser.add_argument("--lang", type=str, default="en")
-    parser.add_argument("--batch_size", type=int, default=10000)
     parser.add_argument(
         "--hf_base",
         type=str,
         default=None,
         help="Base path for HF caches (falls back to $ARGUS_HF_BASE, then $HF_HOME, then ./).",
     )
-    return parser.parse_args()
+    parser.add_argument(
+        "--hf_hub_cache",
+        type=str,
+        default=None,
+        help="Path for Hugging Face hub cache ($HF_HUB_CACHE). Defaults to <hf_base>/hub if not set.",
+    )
+    parser.add_argument(
+        "--hf_datasets_cache",
+        type=str,
+        default=None,
+        help="Path for Hugging Face datasets cache ($HF_DATASETS_CACHE). Defaults to <hf_base>/datasets if not set.",
+    )
+
+    # Inputs/outputs
+    parser.add_argument("--input_path", "--items_in", dest="input_path", type=str, default="./data/interim/4_items_with_wikipedia.jsonl")
+    parser.add_argument("--output_path", "--items_out", dest="output_path", type=str, default="./data/interim/5_items_with_wikipedia_and_desc.jsonl")
+    parser.add_argument(
+        "--tags_wd_out",
+        type=str,
+        default=TAGS_WD_OUT_PATH,
+        help="Output JSONL cache for tag -> Wikidata description.",
+    )
+
+    # Main processing
+    parser.add_argument("--lang", type=str, default="en")
+    parser.add_argument("--batch_size", type=int, default=10000)
+
+    # Optional overrides for politeness/tuning (defaults from env)
+    parser.add_argument("--max_workers", type=int, default=MAX_WORKERS, help="Parallel workers for Wikidata API chunks.")
+    parser.add_argument("--chunk_size", type=int, default=CHUNK_SIZE, help="IDs per chunk (<=50).")
+    parser.add_argument("--max_retries", type=int, default=MAX_RETRIES)
+    parser.add_argument("--backoff_base", type=float, default=BACKOFF_BASE)
+    parser.add_argument("--backoff_max", type=float, default=BACKOFF_MAX)
+
+    args = parser.parse_args()
+
+    # HF cache setup (mirrors other scripts)
+    base = args.hf_base or os.environ.get("ARGUS_HF_BASE") or os.environ.get("HF_HOME") or "./"
+    if args.hf_base:
+        os.environ["HF_HOME"] = base
+    else:
+        os.environ.setdefault("HF_HOME", base)
+
+    if args.hf_hub_cache:
+        os.environ["HF_HUB_CACHE"] = args.hf_hub_cache
+    else:
+        os.environ.setdefault("HF_HUB_CACHE", f"{base}/hub")
+
+    if args.hf_datasets_cache:
+        os.environ["HF_DATASETS_CACHE"] = args.hf_datasets_cache
+    else:
+        os.environ.setdefault("HF_DATASETS_CACHE", f"{base}/datasets")
+
+    return args
 
 
 def main() -> None:
     args = parse_args()
 
-    # HF cache setup
-    base = args.hf_base or os.environ.get("ARGUS_HF_BASE") or os.environ.get("HF_HOME") or "./"
-    if args.hf_base:
-        os.environ["HF_HOME"] = base
-        os.environ["HF_HUB_CACHE"] = f"{base}/hub"
-        os.environ["HF_DATASETS_CACHE"] = f"{base}/datasets"
-    else:
-        os.environ.setdefault("HF_HOME", base)
-        os.environ.setdefault("HF_HUB_CACHE", f"{base}/hub")
-        os.environ.setdefault("HF_DATASETS_CACHE", f"{base}/datasets")
+    # Apply tunable overrides
+    global MAX_WORKERS, CHUNK_SIZE, MAX_RETRIES, BACKOFF_BASE, BACKOFF_MAX, TAGS_WD_OUT_PATH
+    MAX_WORKERS = max(1, int(args.max_workers))
+    CHUNK_SIZE = max(1, min(int(args.chunk_size), MAX_IDS_PER_CALL))
+    MAX_RETRIES = max(0, int(args.max_retries))
+    BACKOFF_BASE = float(args.backoff_base)
+    BACKOFF_MAX = float(args.backoff_max)
+    TAGS_WD_OUT_PATH = args.tags_wd_out
+
+    written_files: List[str] = []
 
     input_path = args.input_path
     output_path = args.output_path
@@ -557,19 +606,69 @@ def main() -> None:
 
     print(f"Items not in wikipedia: {global_not_in_wikipedia_count}")
     print(f"Enriched {len(existing_by_qid)} items with 'wikidata_description'. Saved to {output_path}")
+    written_files.append(output_path)
 
     # === NEW: Ensure Wikidata descriptions for all encountered tags ===
     try:
         all_tags: Set[str] = set()
         # Include tags from the main items we just processed
         all_tags |= _collect_unique_tags_from_items(wikidata_items)
-        # Also include tags from landmark files if present
-        all_tags |= _collect_unique_tags_from_jsonl('./data/interim/3_landmarks_low_freq.jsonl')
-        all_tags |= _collect_unique_tags_from_jsonl('./data/interim/3_landmarks_high_freq.jsonl')
-        print(f"Collected {len(all_tags)} unique tags from items and landmark files for Wikidata descriptions.")
+        print(f"Collected {len(all_tags)} unique tags from items for Wikidata descriptions.")
         _augment_tags_wikidata_descriptions(all_tags, TAGS_WD_OUT_PATH, batch_size=args.batch_size, lang=args.lang, site='enwiki')
+        written_files.append(TAGS_WD_OUT_PATH)
     except Exception as e:
         print(f"[WARN] Tag Wikidata augmentation skipped due to error: {e}")
+
+    # ---------------------------------------------
+    # Output summary (what was stored and where)
+    # ---------------------------------------------
+
+    def _human_size(num_bytes: int) -> str:
+        if num_bytes < 1024:
+            return f"{num_bytes} B"
+        if num_bytes < 1024**2:
+            return f"{num_bytes / 1024:.2f} KB"
+        if num_bytes < 1024**3:
+            return f"{num_bytes / (1024**2):.2f} MB"
+        return f"{num_bytes / (1024**3):.2f} GB"
+
+    def _jsonl_preview(path: str) -> str:
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                for line in handle:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    obj = json.loads(line)
+                    if isinstance(obj, dict):
+                        keys = sorted(obj.keys())
+                        return f"first_record_keys={keys}"
+                    return f"first_record_type={type(obj).__name__}"
+        except Exception as exc:
+            return f"preview_error={type(exc).__name__}"
+        return "empty_file"
+
+    uniq_written: List[str] = []
+    seen = set()
+    for p in written_files:
+        if p in seen:
+            continue
+        seen.add(p)
+        uniq_written.append(p)
+
+    print("\n[5_WIKIDATA_DESC] Output summary")
+    if not uniq_written:
+        print("No output files recorded.")
+    else:
+        print(f"Recorded {len(uniq_written)} output file(s):")
+        for p in uniq_written:
+            abs_p = os.path.abspath(p)
+            if not os.path.exists(p):
+                print(f" - {abs_p} (missing)")
+                continue
+            size = _human_size(os.path.getsize(p))
+            preview = _jsonl_preview(p)
+            print(f" - {abs_p} ({size}) {preview}")
 
 
 if __name__ == '__main__':

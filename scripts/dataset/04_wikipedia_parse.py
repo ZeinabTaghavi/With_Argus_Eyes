@@ -1,14 +1,7 @@
 """Fetch Wikipedia summaries for tag QIDs."""
 
+import argparse
 import os
-# 1️⃣ Pick an absolute path that has enough space (ARGUS_HF_BASE/HF_HOME or default)
-BASE = os.environ.get("ARGUS_HF_BASE") or os.environ.get("HF_HOME") or "./"
-
-# 2️⃣ Point both caches there ─ before any HF import
-os.environ.setdefault("HF_HOME", BASE)          # makes <BASE>/hub and <BASE>/datasets
-os.environ.setdefault("HF_HUB_CACHE", f"{BASE}/hub") # optional, explicit
-os.environ.setdefault("HF_DATASETS_CACHE", f"{BASE}/datasets")
-
 import json
 import glob
 from tqdm import tqdm
@@ -35,19 +28,114 @@ except Exception:
 
 # Concurrency knobs (can be overridden via env vars)
 MAX_WORKERS = int(os.getenv("WIKI_MAX_WORKERS", os.cpu_count() or 8))
-print(f"[4_wikipedia_par] Using {MAX_WORKERS} workers.")
 CHUNKSIZE = int(os.getenv("WIKI_CHUNKSIZE", "16"))
-print(f"[4_wikipedia_par] Using chunk size {CHUNKSIZE}.")
 # Path for tag→Wikipedia first paragraph cache
 TAGS_OUT_PATH = "./data/interim/4_tags_wikipedia_first_paragraphs_cache.jsonl"
+WIKI_LANGUAGE = "en"
+USER_AGENT = "qid-first-paragraph/1.0 (contact: you@example.com)"
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Fetch Wikipedia summaries for Wikidata items and tags.")
+    parser.add_argument(
+        "--hf_base",
+        type=str,
+        default=None,
+        help="Base path for HF caches (falls back to $ARGUS_HF_BASE, then $HF_HOME, then ./).",
+    )
+    parser.add_argument(
+        "--hf_hub_cache",
+        type=str,
+        default=None,
+        help="Path for Hugging Face hub cache ($HF_HUB_CACHE). Defaults to <hf_base>/hub if not set.",
+    )
+    parser.add_argument(
+        "--hf_datasets_cache",
+        type=str,
+        default=None,
+        help="Path for Hugging Face datasets cache ($HF_DATASETS_CACHE). Defaults to <hf_base>/datasets if not set.",
+    )
+
+    parser.add_argument(
+        "--items_in",
+        type=str,
+        default="./data/interim/3_cleaned_items_tag_only.jsonl",
+        help="Input JSONL from 03_cleaning.py (cleaned tag-only items).",
+    )
+    parser.add_argument(
+        "--items_out",
+        type=str,
+        default="./data/interim/4_items_with_wikipedia.jsonl",
+        help="Output JSONL for items enriched with Wikipedia fields.",
+    )
+
+    parser.add_argument(
+        "--tags_cache_out",
+        type=str,
+        default="./data/interim/4_tags_wikipedia_first_paragraphs_cache.jsonl",
+        help="Output JSONL cache: tag -> Wikipedia first paragraph.",
+    )
+
+    parser.add_argument("--language", type=str, default="en", help="Wikipedia language (default: en).")
+    parser.add_argument(
+        "--user-agent",
+        type=str,
+        default="qid-first-paragraph/1.0 (contact: you@example.com)",
+        help="User-Agent for Wikimedia requests (please include contact info).",
+    )
+
+    parser.add_argument(
+        "--max_workers",
+        type=int,
+        default=MAX_WORKERS,
+        help="Parallel workers (defaults to $WIKI_MAX_WORKERS or CPU count).",
+    )
+    parser.add_argument(
+        "--chunksize",
+        type=int,
+        default=CHUNKSIZE,
+        help="Chunk size for tqdm process_map fallback (defaults to $WIKI_CHUNKSIZE).",
+    )
+    parser.add_argument(
+        "--items_batch_size",
+        type=int,
+        default=1000,
+        help="Batch size when enriching items; progress is checkpointed each batch.",
+    )
+    parser.add_argument(
+        "--tags_batch_size",
+        type=int,
+        default=10000,
+        help="Batch size when enriching tags cache; progress is checkpointed each batch.",
+    )
+    args = parser.parse_args()
+
+    # HF cache setup (mirrors other scripts)
+    base = args.hf_base or os.environ.get("ARGUS_HF_BASE") or os.environ.get("HF_HOME") or "./"
+    if args.hf_base:
+        os.environ["HF_HOME"] = base
+    else:
+        os.environ.setdefault("HF_HOME", base)
+
+    if args.hf_hub_cache:
+        os.environ["HF_HUB_CACHE"] = args.hf_hub_cache
+    else:
+        os.environ.setdefault("HF_HUB_CACHE", f"{base}/hub")
+
+    if args.hf_datasets_cache:
+        os.environ["HF_DATASETS_CACHE"] = args.hf_datasets_cache
+    else:
+        os.environ.setdefault("HF_DATASETS_CACHE", f"{base}/datasets")
+
+    return args
 
 WIKIDATA_API = "https://www.wikidata.org/w/api.php"
 
-def _make_session():
+def _make_session(user_agent: str = "qid-first-paragraph/1.0 (contact: you@example.com)"):
     s = requests.Session()
     s.headers.update({
         # put your contact here per Wikimedia best practice
-        "User-Agent": "qid-first-paragraph/1.0 (contact: you@example.com)",
+        "User-Agent": user_agent,
         "Accept": "application/json",
     })
     retry = Retry(
@@ -60,14 +148,20 @@ def _make_session():
     s.mount("https://", HTTPAdapter(max_retries=retry))
     return s
 
-def _get_wikipedia_title_from_qid(qid: str, lang: str = "en", session: requests.Session | None = None):
+def _get_wikipedia_title_from_qid(
+    qid: str,
+    lang: str = "en",
+    session: requests.Session | None = None,
+    *,
+    user_agent: str = "qid-first-paragraph/1.0 (contact: you@example.com)",
+):
     """
     Resolve a Wikidata QID to the Wikipedia page title (and lang) using wbgetentities.
     Requires the given language's wiki (e.g., 'enwiki'); if absent, we skip the item (no fallback to other languages).
     """
     if not qid or not qid.startswith("Q"):
         raise ValueError("QID must look like 'Q…' (e.g., 'Q92561').")
-    session = session or _make_session()
+    session = session or _make_session(user_agent=user_agent)
 
     # First try: ask only for the requested language wiki via sitefilter (less payload).
     params_pref = {
@@ -89,12 +183,18 @@ def _get_wikipedia_title_from_qid(qid: str, lang: str = "en", session: requests.
 
     raise LookupError(f"No {lang}.wikipedia.org sitelink found for {qid}.")
 
-def _fetch_first_paragraph(title: str, wiki_lang: str, session: requests.Session | None = None) -> str:
+def _fetch_first_paragraph(
+    title: str,
+    wiki_lang: str,
+    session: requests.Session | None = None,
+    *,
+    user_agent: str = "qid-first-paragraph/1.0 (contact: you@example.com)",
+) -> str:
     """
     Fetch the first paragraph of a Wikipedia article.
     Tries REST /page/summary first; falls back to Action API TextExtracts exintro.
     """
-    session = session or _make_session()
+    session = session or _make_session(user_agent=user_agent)
 
     # 1) REST summary (plain-text 'extract'); handles redirects via ?redirect=true
     rest_api = f"https://{wiki_lang}.wikipedia.org/api/rest_v1/page/summary/{quote(title.replace(' ', '_'), safe='')}"
@@ -138,26 +238,41 @@ def first_paragraph_from_qid(qid: str, lang: str = "en") -> str:
     title, wiki_lang = _get_wikipedia_title_from_qid(qid, lang=lang, session=session)
     return _fetch_first_paragraph(title, wiki_lang, session=session)
 
-def _process_one(item: dict):
-    """Return enriched item with English Wikipedia first paragraph, or None if not available."""
-    qid = item.get('qid')
+def _process_one(item: dict) -> dict:
+    """
+    Return enriched item with Wikipedia fields.
+
+    Always returns a dict with:
+      - wikipedia_checked: bool
+      - wikipedia_exists: bool
+      - wikipedia_first_paragraph: str ("" when not found)
+    """
+    qid = item.get("qid") or item.get("Q_number") or item.get("itemQ")
     if not qid:
         raise LookupError(f"No qid found for {item}")
-        return None
+
     try:
-        title, wiki_lang = _get_wikipedia_title_from_qid(qid, lang='en')
-        if wiki_lang != 'en':
-            raise LookupError(f"Wikipedia language is not English for {qid}")
-            return None
-        first_para = _fetch_first_paragraph(title, wiki_lang)
+        title, wiki_lang = _get_wikipedia_title_from_qid(qid, lang=WIKI_LANGUAGE, user_agent=USER_AGENT)
+        first_para = _fetch_first_paragraph(title, wiki_lang, user_agent=USER_AGENT)
         enriched = dict(item)
-        enriched['qid'] = qid
-        enriched['wikipedia_lang'] = wiki_lang
-        enriched['wikipedia_title'] = title
-        enriched['wikipedia_first_paragraph'] = first_para
+        enriched["qid"] = qid
+        enriched["wikipedia_checked"] = True
+        enriched["wikipedia_exists"] = True
+        enriched["wikipedia_lang"] = wiki_lang
+        enriched["wikipedia_title"] = title
+        enriched["wikipedia_first_paragraph"] = first_para
+        enriched.pop("_user_agent", None)
         return enriched
     except (LookupError, ValueError, requests.RequestException):
-        return None
+        enriched = dict(item)
+        enriched["qid"] = qid
+        enriched["wikipedia_checked"] = True
+        enriched["wikipedia_exists"] = False
+        enriched.setdefault("wikipedia_lang", WIKI_LANGUAGE)
+        enriched.setdefault("wikipedia_title", "")
+        enriched["wikipedia_first_paragraph"] = ""
+        enriched.pop("_user_agent", None)
+        return enriched
 
 
 def _normalize_item_with_qid(original: dict) -> dict | None:
@@ -259,7 +374,10 @@ def _augment_file_inplace_with_wikipedia(path: str, path_out: str):
         if not qid:
             continue
         existing_item = existing_by_qid.get(qid)
-        if (existing_item is None) or (not existing_item.get('wikipedia_first_paragraph')):
+        checked = False
+        if existing_item is not None:
+            checked = bool(existing_item.get("wikipedia_checked")) or ("wikipedia_exists" in existing_item)
+        if (existing_item is None) or (not checked):
             items_to_process.append(orig)
 
     # Enrich the items
@@ -279,17 +397,15 @@ def _augment_file_inplace_with_wikipedia(path: str, path_out: str):
                 continue
             processed_item = results[idx] if idx < len(results) else None
             idx += 1
-            if processed_item is not None:
-                processed_item = dict(processed_item)
-                processed_item['qid'] = qid
-                existing_by_qid[qid] = processed_item
+            processed_item = dict(processed_item) if processed_item is not None else dict(orig)
+            processed_item["qid"] = qid
+            existing_by_qid[qid] = processed_item
 
-    # Write out all items with a wikipedia_first_paragraph
+    # Write out all items (including those without a paragraph) so we don't reprocess forever.
     os.makedirs(os.path.dirname(path_out), exist_ok=True)
     with open(path_out, 'w', encoding='utf-8') as f_out:
         for it in existing_by_qid.values():
-            if it.get('wikipedia_first_paragraph'):
-                f_out.write(json.dumps(it, ensure_ascii=False) + '\n')
+            f_out.write(json.dumps(it, ensure_ascii=False) + '\n')
     print(f"[4_wikipedia_par update] items saved so far: {len(existing_by_qid)}")
 
 
@@ -305,7 +421,7 @@ def _process_one_tag(tag_name: str) -> dict | None:
     if not name:
         raise ValueError(f"Tag name is empty for {tag_name}")
     try:
-        first_para = _fetch_first_paragraph(name, "en")
+        first_para = _fetch_first_paragraph(name, "en", user_agent=USER_AGENT)
         return {
             "tag": name,
             "wikipedia_lang": "en",
@@ -434,7 +550,7 @@ def _augment_tags_first_paragraphs(tag_names: set[str], path_out: str, batch_siz
 
     print(f"Tags cache now contains {len(cache)} entries. Saved to: {path_out}")
 
-def main():
+def main() -> None:
     """
     Load Wikidata items, enrich them with English Wikipedia first paragraphs and
     write them to an output JSONL file. If the output file already exists, previously
@@ -448,7 +564,21 @@ def main():
     for that tag in `tags_wikipedia_first_paragraphs.jsonl`. That cache is updated
     incrementally and saved after each batch as well.
     """
-    out_path = './data/interim/4_items_with_wikipedia.jsonl'
+    args = parse_args()
+
+    global MAX_WORKERS, CHUNKSIZE, TAGS_OUT_PATH, WIKI_LANGUAGE, USER_AGENT
+    MAX_WORKERS = max(1, int(args.max_workers))
+    CHUNKSIZE = max(1, int(args.chunksize))
+    TAGS_OUT_PATH = args.tags_cache_out
+    WIKI_LANGUAGE = args.language
+    USER_AGENT = args.user_agent
+
+    print(f"[4_wikipedia_par] Using {MAX_WORKERS} workers.")
+    print(f"[4_wikipedia_par] Using chunk size {CHUNKSIZE}.")
+
+    written_files: list[str] = []
+
+    out_path = args.items_out
 
     # Load existing processed items from out_path, keyed by QID
     existing_by_qid: dict[str, dict] = {}
@@ -473,10 +603,8 @@ def main():
     # Load input items and determine which need processing
     wikidata_items: list[dict] = []
     items_to_process: list[dict] = []
-    added_qids: set[str] = set()
     try:
-        with open('./data/interim/3_cleaned_items_tag_only.jsonl', 'r', encoding='utf-8') as f_in:
-            all_cleaned_items_labels = set()
+        with open(args.items_in, 'r', encoding='utf-8') as f_in:
             for line in f_in:
                 line = line.strip()
                 if not line:
@@ -485,31 +613,28 @@ def main():
                     item = json.loads(line)
                 except Exception:
                     continue
-                label = item.get('label')
-                if label:
-                    all_cleaned_items_labels.add(label)
-                wikidata_items.append(item)
-                qid = item.get('qid') 
+                qid = item.get('qid') or item.get('Q_number') or item.get('itemQ')
                 if not qid:
                     continue
+                item['qid'] = qid
+                wikidata_items.append(item)
                 existing_item = existing_by_qid.get(qid)
-                if (existing_item is None):
+                checked = False
+                if existing_item is not None:
+                    checked = bool(existing_item.get("wikipedia_checked")) or ("wikipedia_exists" in existing_item)
+                if existing_item is None:
                     items_to_process.append(item)
-                elif (not existing_item.get('wikipedia_first_paragraph')):
-                    raise Exception(f"Item {qid} has no wikipedia first paragraph")
-
-            for item in items_to_process:
-                assert item.get('qid') not in existing_by_qid.keys()
+                elif not checked:
+                    items_to_process.append(item)
 
     except FileNotFoundError:
-        pass
+        print(f"[4_wikipedia_par] Missing input file: {args.items_in}")
 
     # Process items in batches of 10,000, saving after each batch
-    initial_saved = len(existing_by_qid)
     total_added = 0
-    BATCH_SIZE = 1000
-    for start in tqdm(range(0, len(items_to_process), BATCH_SIZE), desc="[4_wikipedia_par] Processing batches"):
-        batch = items_to_process[start:start + BATCH_SIZE]
+    batch_size = max(1, int(args.items_batch_size))
+    for start in tqdm(range(0, len(items_to_process), batch_size), desc="[4_wikipedia_par] Processing item batches"):
+        batch = items_to_process[start:start + batch_size]
 
         # Enrich the current batch
         if _HAVE_P_TQDM:
@@ -525,18 +650,11 @@ def main():
             qid = orig.get('qid')
             if not qid:
                 raise Exception(f"Item {orig} has no qid")
-            if processed is not None:
-                processed = dict(processed)
-                processed['qid'] = qid
-                if qid not in existing_by_qid:
-                    batch_added += 1
-                existing_by_qid[qid] = processed
-            else: # there is no wikipedia first paragraph
-                processed = dict(orig)
-                processed['qid'] = qid
-                processed['wikipedia_first_paragraph'] = ''
-                processed['wikipedia_exists'] = False
-                existing_by_qid[qid] = processed
+            processed = dict(processed) if processed is not None else dict(orig)
+            processed['qid'] = qid
+            if qid not in existing_by_qid:
+                batch_added += 1
+            existing_by_qid[qid] = processed
 
         total_added += batch_added
 
@@ -544,12 +662,13 @@ def main():
         os.makedirs(os.path.dirname(out_path), exist_ok=True)
         with open(out_path, 'w', encoding='utf-8') as f_out:
             for it in existing_by_qid.values():
-                if it.get('wikipedia_first_paragraph'):
-                    f_out.write(json.dumps(it, ensure_ascii=False) + '\n')
+                f_out.write(json.dumps(it, ensure_ascii=False) + '\n')
+        if out_path not in written_files:
+            written_files.append(out_path)
         remaining_est = max(0, len(items_to_process) - total_added)
         print(f"[4_wikipedia_par update] items saved so far: {len(existing_by_qid)} (+{batch_added} this batch, +{total_added} this run), estimated remaining (qids): {remaining_est}")
 
-        print(f"Processed {min(start + BATCH_SIZE, len(items_to_process))} out of {len(items_to_process)} items and saved progress.")
+        print(f"Processed {min(start + batch_size, len(items_to_process))} out of {len(items_to_process)} items and saved progress.")
 
     # Summaries
     print(f"Total input items: {len(wikidata_items)}")
@@ -557,24 +676,70 @@ def main():
     print(f"Items with an English Wikipedia page (final): {len(existing_by_qid)}")
     print(f"Saved enriched items to: {out_path}")
 
-    # Update landmark files similarly (items with QIDs)
-    _augment_file_inplace_with_wikipedia('./data/interim/3_landmarks_low_freq.jsonl', './data/interim/4_landmarks_low_freq.jsonl')
-    _augment_file_inplace_with_wikipedia('./data/interim/3_landmarks_high_freq.jsonl', './data/interim/4_landmarks_high_freq.jsonl')
-    print("Augmented Wikipedia fields in: data/interim/landmarks_low_freq.jsonl, data/interim/landmarks_high_freq.jsonl")
-
     # === NEW: Ensure Wikipedia first paragraphs for all encountered tags ===
-    # Collect tags from the main items and landmark files.
-    print(f"Collecting tags from items and landmark files...")
+    # Collect tags from the main items.
+    print("Collecting tags from items...")
     all_tags: set[str] = set()
-    print(len(wikidata_items))
     all_tags |= _collect_unique_tags_from_items(wikidata_items)
-    all_tags |= _collect_unique_tags_from_jsonl('./data/interim/3_landmarks_low_freq.jsonl')
-    all_tags |= _collect_unique_tags_from_jsonl('./data/interim/3_landmarks_high_freq.jsonl')
 
-    print(f"Collected {len(all_tags)} unique tags from items and landmark files.")
+    print(f"Collected {len(all_tags)} unique tags from items.")
 
     # Build/extend the tags cache JSONL with first paragraphs.
-    _augment_tags_first_paragraphs(all_tags, TAGS_OUT_PATH, batch_size=10000)
+    _augment_tags_first_paragraphs(all_tags, TAGS_OUT_PATH, batch_size=max(1, int(args.tags_batch_size)))
+    if os.path.exists(TAGS_OUT_PATH):
+        written_files.append(TAGS_OUT_PATH)
+
+    # ---------------------------------------------
+    # Output summary (what was stored and where)
+    # ---------------------------------------------
+
+    def _human_size(num_bytes: int) -> str:
+        if num_bytes < 1024:
+            return f"{num_bytes} B"
+        if num_bytes < 1024**2:
+            return f"{num_bytes / 1024:.2f} KB"
+        if num_bytes < 1024**3:
+            return f"{num_bytes / (1024**2):.2f} MB"
+        return f"{num_bytes / (1024**3):.2f} GB"
+
+    def _jsonl_preview(path: str) -> str:
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                for line in handle:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    obj = json.loads(line)
+                    if isinstance(obj, dict):
+                        keys = sorted(obj.keys())
+                        return f"first_record_keys={keys}"
+                    return f"first_record_type={type(obj).__name__}"
+        except Exception as exc:
+            return f"preview_error={type(exc).__name__}"
+        return "empty_file"
+
+    # de-dupe while preserving order
+    uniq_written: list[str] = []
+    seen = set()
+    for p in written_files:
+        if p in seen:
+            continue
+        seen.add(p)
+        uniq_written.append(p)
+
+    print("\n[4_WIKIPEDIA_PARSE] Output summary")
+    if not uniq_written:
+        print("No output files recorded.")
+    else:
+        print(f"Recorded {len(uniq_written)} output file(s):")
+        for p in uniq_written:
+            abs_p = os.path.abspath(p)
+            if not os.path.exists(p):
+                print(f" - {abs_p} (missing)")
+                continue
+            size = _human_size(os.path.getsize(p))
+            preview = _jsonl_preview(p)
+            print(f" - {abs_p} ({size}) {preview}")
 
 if __name__ == "__main__":
     main()
