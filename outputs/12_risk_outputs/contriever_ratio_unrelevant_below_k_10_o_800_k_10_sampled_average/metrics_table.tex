@@ -1,0 +1,17 @@
+\begin{table}[t]
+\centering
+\begin{tabular}{llcccccccccc}
+\toprule
+Model Type & Architecture / Config & RMSE ($\downarrow$) & MAE ($\downarrow$) & Pearson $r$ ($\uparrow$) & Spearman $\rho$ ($\uparrow$) & Precision$_{\text{macro}}$ ($\uparrow$) & Recall$_{\text{macro}}$ ($\uparrow$) & F1$_{\text{macro}}$ ($\uparrow$) & F1$_{\text{micro}}$ ($\uparrow$) & F1$_{\text{weighted}}$ ($\uparrow$) & Accuracy ($\uparrow$) \\
+\midrule
+Baselines & cosine & 0.367 & 0.345 & -0.042 & -0.033 & 0.046 & 0.333 & 0.080 & 0.137 & 0.033 & 0.137 \\
+ & one & 0.836 & 0.817 & 0.000 & 0.000 & 0.011 & 0.333 & 0.022 & 0.034 & 0.002 & 0.034 \\
+ & ridge & 0.151 & 0.101 & 0.536 & 0.468 & 0.607 & 0.422 & 0.430 & 0.835 & 0.808 & 0.835 \\
+ & xgboost & 0.147 & 0.095 & 0.566 & 0.481 & 0.710 & 0.435 & 0.457 & 0.846 & 0.816 & 0.846 \\
+ & zero & 0.256 & 0.183 & 0.000 & 0.000 & 0.276 & 0.333 & 0.302 & 0.828 & 0.751 & 0.828 \\
+MLPs & contriever_S3_WD_High & 0.151 & 0.100 & 0.536 & 0.469 & 0.605 & 0.420 & 0.427 & 0.834 & 0.806 & 0.834 \\
+\bottomrule
+\end{tabular}
+\caption{Regression performance on the contriever_ratio_unrelevant_below_k_10_o_800_k_10_sampled_average regression task.}
+\label{tab:contriever_ratio_unrelevant_below_k_10_o_800_k_10_sampled_average_regression}
+\end{table}

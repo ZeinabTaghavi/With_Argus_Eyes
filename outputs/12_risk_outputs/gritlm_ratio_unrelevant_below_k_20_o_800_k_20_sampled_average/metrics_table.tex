@@ -1,0 +1,17 @@
+\begin{table}[t]
+\centering
+\begin{tabular}{llcccccccccc}
+\toprule
+Model Type & Architecture / Config & RMSE ($\downarrow$) & MAE ($\downarrow$) & Pearson $r$ ($\uparrow$) & Spearman $\rho$ ($\uparrow$) & Precision$_{\text{macro}}$ ($\uparrow$) & Recall$_{\text{macro}}$ ($\uparrow$) & F1$_{\text{macro}}$ ($\uparrow$) & F1$_{\text{micro}}$ ($\uparrow$) & F1$_{\text{weighted}}$ ($\uparrow$) & Accuracy ($\uparrow$) \\
+\midrule
+Baselines & cosine & 0.334 & 0.306 & 0.054 & 0.053 & 0.062 & 0.333 & 0.105 & 0.186 & 0.058 & 0.186 \\
+ & one & 0.779 & 0.745 & 0.000 & 0.000 & 0.028 & 0.333 & 0.052 & 0.085 & 0.013 & 0.085 \\
+ & ridge & 0.175 & 0.129 & 0.647 & 0.554 & 0.654 & 0.560 & 0.578 & 0.756 & 0.756 & 0.756 \\
+ & xgboost & 0.158 & 0.113 & 0.712 & 0.602 & 0.674 & 0.557 & 0.585 & 0.780 & 0.770 & 0.780 \\
+ & zero & 0.340 & 0.255 & 0.000 & 0.000 & 0.243 & 0.333 & 0.281 & 0.729 & 0.615 & 0.729 \\
+MLPs & gritlm_S3_WD_High & 0.175 & 0.128 & 0.649 & 0.556 & 0.657 & 0.560 & 0.579 & 0.759 & 0.757 & 0.759 \\
+\bottomrule
+\end{tabular}
+\caption{Regression performance on the gritlm_ratio_unrelevant_below_k_20_o_800_k_20_sampled_average regression task.}
+\label{tab:gritlm_ratio_unrelevant_below_k_20_o_800_k_20_sampled_average_regression}
+\end{table}

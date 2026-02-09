@@ -7,10 +7,9 @@ __pycache__/
 /data/raw/
 /data/interim/
 /data/processed/*
-!/data/processed/8_Emb_Rank/
-!/data/processed/8_Emb_Rank/**
+!/data/processed/11_Emb_Rank/
+!/data/processed/11_Emb_Rank/**
 !/data/README.md
-/outputs/*
 !/outputs/README.md
 /data/processed/7_all_wikipedia_pages.jsonl
 # Cache

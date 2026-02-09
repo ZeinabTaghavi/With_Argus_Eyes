@@ -20,7 +20,7 @@ BATCH_SIZE="${BATCH_SIZE:-64}"
 MAX_LENGTH="${MAX_LENGTH:-1048}"
 
 # Input JSONL rows should contain at least: {"label":"...", "context":"..."}
-INPUT_JSONL="${INPUT_JSONL:-${ARGUS_INTERIM_ROOT}/14_selected_label_context_pairs.jsonl}"
+INPUT_JSONL="outputs/14_score_label_context_pairs/input_data.jsonl"
 
 ANALYSIS_OUT_DIR="${ANALYSIS_OUT_DIR:-${WORKSPACE_ROOT}/outputs/12_risk_outputs}"
 RESULTS_TAG="${RESULTS_TAG:-}" # optional explicit stage-12 tag
