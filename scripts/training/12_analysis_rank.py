@@ -11,8 +11,10 @@ import argparse
 # Add project root to Python path before project-local imports.
 script_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.abspath(os.path.join(script_dir, '..', '..'))
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
+src_root = os.path.join(project_root, "src")
+for path in (project_root, src_root):
+    if path not in sys.path:
+        sys.path.insert(0, path)
 
 
 from with_argus_eyes.training.helpers import load_rank_file, stub_name, compute_and_print_risk_scores_for_jsonl

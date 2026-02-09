@@ -15,8 +15,10 @@ from tqdm import tqdm
 # ---------------------------
 script_dir = os.path.dirname(os.path.abspath(__file__))
 workspace_root = os.path.abspath(os.path.join(script_dir, '..', '..'))
-if workspace_root not in sys.path:
-    sys.path.insert(0, workspace_root)
+src_root = os.path.join(workspace_root, "src")
+for path in (workspace_root, src_root):
+    if path not in sys.path:
+        sys.path.insert(0, path)
 
  
 

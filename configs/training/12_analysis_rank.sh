@@ -7,6 +7,7 @@ source "${WORKSPACE_ROOT}/configs/dataset/00_env.sh"
 
 PYTHON="${PYTHON:-python}"
 SCRIPT="${WORKSPACE_ROOT}/scripts/training/12_analysis_rank.py"
+export PYTHONPATH="${WORKSPACE_ROOT}/src:${PYTHONPATH:-}"
 
 # Hugging Face cache root used by training scripts.
 export ARGUS_HF_BASE="${ARGUS_HF_BASE:-../../../../data/proj/zeinabtaghavi}"
