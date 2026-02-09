@@ -1,14 +1,7 @@
 """Fetch second-depth tags and related Wikipedia summaries."""
 
+import argparse
 import os
-# 1️⃣ Pick an absolute path that has enough space (ARGUS_HF_BASE/HF_HOME or default)
-BASE = os.environ.get("ARGUS_HF_BASE") or os.environ.get("HF_HOME") or "./"
-
-# 2️⃣ Point both caches there ─ before any HF import
-os.environ.setdefault("HF_HOME", BASE)          # makes <BASE>/hub and <BASE>/datasets
-os.environ.setdefault("HF_HUB_CACHE", f"{BASE}/hub") # optional, explicit
-os.environ.setdefault("HF_DATASETS_CACHE", f"{BASE}/datasets")
-
 import json
 import requests
 import time
@@ -20,9 +13,102 @@ import glob
 from urllib.parse import quote
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+import re
 
 WDQS_ENDPOINT = "https://query.wikidata.org/sparql"
 WIKIDATA_API = "https://www.wikidata.org/w/api.php"
+
+# ---------------------------------------------------------------------------
+# Defaults / CLI
+# ---------------------------------------------------------------------------
+
+INPUT_ITEMS_DEFAULT = "./data/interim/4_items_with_wikipedia.jsonl"
+OUTPUT_ITEMS_DEFAULT = "./data/interim/5_items_with_tags_qids.jsonl"
+
+# 05 writes a tag wikipedia file used by 06_final_cleaning.py
+OUTPUT_TAGS_WIKI_DEFAULT = "./data/interim/5_tags_wikipedia_first_paragraphs.jsonl"
+
+# Seed cache from 04 if available (to avoid refetching)
+SEED_TAGS_WIKI_CACHE_DEFAULT = "./data/interim/4_tags_wikipedia_first_paragraphs_cache.jsonl"
+
+PARALLELISM_DEFAULT = int(os.getenv("MAX_WORKERS", multiprocessing.cpu_count() or 8))
+PER_CALL_SLEEP_DEFAULT = (0.15, 0.45)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Fetch second-depth tags and (optionally) Wikipedia paragraphs for tags.")
+    parser.add_argument(
+        "--hf_base",
+        type=str,
+        default=None,
+        help="Base path for HF caches (falls back to $ARGUS_HF_BASE, then $HF_HOME, then ./).",
+    )
+    parser.add_argument(
+        "--hf_hub_cache",
+        type=str,
+        default=None,
+        help="Path for Hugging Face hub cache ($HF_HUB_CACHE). Defaults to <hf_base>/hub if not set.",
+    )
+    parser.add_argument(
+        "--hf_datasets_cache",
+        type=str,
+        default=None,
+        help="Path for Hugging Face datasets cache ($HF_DATASETS_CACHE). Defaults to <hf_base>/datasets if not set.",
+    )
+
+    parser.add_argument("--input_items", type=str, default=INPUT_ITEMS_DEFAULT, help="Input JSONL (output of 04_wikipedia_parse.py).")
+    parser.add_argument("--output_items", type=str, default=OUTPUT_ITEMS_DEFAULT, help="Output JSONL with related_tags resolved to QIDs + one-hop tags.")
+
+    parser.add_argument(
+        "--tags_wikipedia_out",
+        type=str,
+        default=OUTPUT_TAGS_WIKI_DEFAULT,
+        help="Output JSONL with tag QID -> Wikipedia first paragraph (used by 06_final_cleaning.py).",
+    )
+    parser.add_argument(
+        "--tags_wikipedia_seed_cache",
+        type=str,
+        default=SEED_TAGS_WIKI_CACHE_DEFAULT,
+        help="Optional seed cache from 04 (tag Wikipedia paragraphs). Used to avoid refetching.",
+    )
+    parser.add_argument(
+        "--disable_tag_wikipedia",
+        action="store_true",
+        help="If set, do not fetch Wikipedia paragraphs for tags.",
+    )
+
+    parser.add_argument("--language", type=str, default="en", help="Language for Wikidata labels and Wikipedia (default: en).")
+    parser.add_argument(
+        "--user-agent",
+        type=str,
+        default="YourAppName/1.0 (you@example.com)",
+        help="User-Agent for Wikidata/Wikipedia requests (please include contact info).",
+    )
+
+    parser.add_argument("--parallelism", type=int, default=PARALLELISM_DEFAULT, help="Parallel workers.")
+    parser.add_argument("--min_sleep", type=float, default=PER_CALL_SLEEP_DEFAULT[0], help="Min per-call sleep.")
+    parser.add_argument("--max_sleep", type=float, default=PER_CALL_SLEEP_DEFAULT[1], help="Max per-call sleep.")
+
+    args = parser.parse_args()
+
+    # HF cache setup (mirrors other scripts)
+    base = args.hf_base or os.environ.get("ARGUS_HF_BASE") or os.environ.get("HF_HOME") or "./"
+    if args.hf_base:
+        os.environ["HF_HOME"] = base
+    else:
+        os.environ.setdefault("HF_HOME", base)
+
+    if args.hf_hub_cache:
+        os.environ["HF_HUB_CACHE"] = args.hf_hub_cache
+    else:
+        os.environ.setdefault("HF_HUB_CACHE", f"{base}/hub")
+
+    if args.hf_datasets_cache:
+        os.environ["HF_DATASETS_CACHE"] = args.hf_datasets_cache
+    else:
+        os.environ.setdefault("HF_DATASETS_CACHE", f"{base}/datasets")
+
+    return args
 
 # -------------------------------
 # HTTP helpers (robust + polite)
@@ -136,11 +222,56 @@ def resolve_qid_by_exact_label(label: str,
     return rows[0].get("qid", {}).get("value")
 
 
-# --- Tunables (be polite to WDQS!) ---
-# Use all available CPUs, but allow override via environment variable
-PARALLELISM = int(os.getenv("MAX_WORKERS", multiprocessing.cpu_count() or 8))
-print(f"Using {PARALLELISM} workers for parallel processing (available CPUs: {multiprocessing.cpu_count()})")
-PER_CALL_SLEEP = (0.15, 0.45)  # small jitter per process between calls
+# Set from args in main()
+PARALLELISM = PARALLELISM_DEFAULT
+PER_CALL_SLEEP = PER_CALL_SLEEP_DEFAULT  # small jitter per process between calls
+
+
+# ---------------------------------------------------------------------------
+# Wikipedia paragraph cleaning (match the policy from 04)
+# ---------------------------------------------------------------------------
+
+_DISALLOWED_LEADS = (
+    "may refer to",
+    "may also refer to",
+    "can refer to",
+    "can also refer to",
+    "may stand for",
+    "may mean",
+    "this category should only contain articles on species",
+)
+
+_DISALLOWED_SUBSTRINGS = (
+    "disambiguation",
+    "may refer to one of the following",
+    "refer to one of the following",
+    "this page lists articles",
+    "this disambiguation page",
+    "wikipedia does not have an article with this exact name",
+    "this category should only contain articles on species",
+)
+
+
+def _word_count(text: str) -> int:
+    return len(re.findall(r"\b\w+\b", text or ""))
+
+
+def clean_wikipedia_first_paragraph(text: str, *, min_words: int = 10) -> str | None:
+    if not isinstance(text, str):
+        return None
+    cleaned = " ".join(text.strip().split())
+    if not cleaned:
+        return None
+    lead = cleaned.casefold()
+    for prefix in _DISALLOWED_LEADS:
+        if lead.startswith(prefix):
+            return None
+    head = lead[:200]
+    if any(s in head for s in _DISALLOWED_SUBSTRINGS):
+        return None
+    if _word_count(cleaned) < int(min_words):
+        return None
+    return cleaned
 
 
 # -------------------------------
@@ -589,17 +720,28 @@ def _process_tag_wikipedia(tag_dict: dict, language: str = "en") -> dict | None:
         # Gentle pause per request
         time.sleep(random.uniform(*PER_CALL_SLEEP))
         first_para = first_paragraph_from_qid(qid, lang=language)
+        first_para_clean = clean_wikipedia_first_paragraph(first_para)
+        if not first_para_clean:
+            return None
         return {
             "qid": qid,
             "label": label,
-            "wikipedia_first_paragraph": first_para
+            "wikipedia_first_paragraph": first_para_clean
         }
     except (LookupError, ValueError, requests.RequestException) as e:
         # On error, return None (we'll skip this tag)
         return None
 
 
-def process_file(input_path, output_path, tags_wikipedia_output_path=None):
+def process_file(
+    input_path,
+    output_path,
+    *,
+    tags_wikipedia_output_path=None,
+    tags_wikipedia_seed_cache_path=None,
+    language: str = "en",
+    user_agent: str = "YourAppName/1.0 (you@example.com)",
+):
     """
     Process a single JSONL file:
     1. For each item with a QID, fetch related_tags from Wikidata
@@ -700,7 +842,7 @@ def process_file(input_path, output_path, tags_wikipedia_output_path=None):
             tag_qid = tag_dict.get("qid")
             if tag_qid and isinstance(tag_qid, str) and tag_qid.startswith("Q"):
                 if "one_hop_related_tags" not in tag_dict:
-                    one_hop_tags = _get_one_hop_related_tags(tag_dict, language="en", user_agent="YourAppName/1.0 (you@example.com)")
+                    one_hop_tags = _get_one_hop_related_tags(tag_dict, language=language, user_agent=user_agent)
                     return {**tag_dict, "one_hop_related_tags": one_hop_tags}
             return {**tag_dict, "one_hop_related_tags": tag_dict.get("one_hop_related_tags", [])}
         
@@ -801,17 +943,22 @@ def process_file(input_path, output_path, tags_wikipedia_output_path=None):
     # Fetch Wikipedia first paragraphs for tags if output path is provided
     if tags_wikipedia_output_path:
         print(f"\nFetching Wikipedia first paragraphs for tags...")
-        _process_tags_wikipedia(all_resolved, tags_wikipedia_output_path)
+        _process_tags_wikipedia(
+            all_resolved,
+            tags_wikipedia_output_path,
+            seed_cache_path=tags_wikipedia_seed_cache_path,
+            language=language,
+        )
     
     return stats
 
 
-def _process_tags_wikipedia(all_items: list, output_path: str):
+def _process_tags_wikipedia(all_items: list, output_path: str, *, seed_cache_path: str | None = None, language: str = "en"):
     """
     Collect unique tags with QIDs from all items, fetch Wikipedia first paragraphs,
     and save them to a separate JSONL file.
     """
-    # Collect unique tags (by QID) - we want to process each QID only once
+    # Collect unique tags (by QID) - include depth-1 tags and depth-2 (one-hop) tags
     unique_tags_by_qid = {}
     for item in all_items:
         for tag in item.get("related_tags", []):
@@ -821,6 +968,12 @@ def _process_tags_wikipedia(all_items: list, output_path: str):
                 # Use QID as key to avoid duplicates
                 if qid not in unique_tags_by_qid:
                     unique_tags_by_qid[qid] = {"qid": qid, "label": label}
+            for oh in tag.get("one_hop_related_tags", []) if isinstance(tag, dict) else []:
+                oqid = oh.get("qid")
+                olabel = oh.get("label")
+                if oqid and isinstance(oqid, str) and oqid.startswith("Q"):
+                    if oqid not in unique_tags_by_qid:
+                        unique_tags_by_qid[oqid] = {"qid": oqid, "label": olabel}
     
     unique_tags_list = list(unique_tags_by_qid.values())
     print(f"Found {len(unique_tags_list)} unique tags with QIDs to process")
@@ -829,8 +982,32 @@ def _process_tags_wikipedia(all_items: list, output_path: str):
         print("No tags with QIDs to process for Wikipedia paragraphs")
         return
     
-    # Load existing cache to avoid reprocessing
+    # Load existing cache(s) to avoid reprocessing:
+    # - optional seed cache from 04
+    # - the output file itself (incremental)
     existing_cache = {}
+    if seed_cache_path and os.path.exists(seed_cache_path):
+        print(f"Seeding cache from {seed_cache_path}...")
+        with open(seed_cache_path, "r") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    tag_data = json.loads(line)
+                except Exception:
+                    continue
+                qid = tag_data.get("qid") or tag_data.get("Q_number") or tag_data.get("itemQ")
+                if not qid:
+                    continue
+                para_clean = clean_wikipedia_first_paragraph(tag_data.get("wikipedia_first_paragraph", ""))
+                if not para_clean:
+                    continue
+                existing_cache[qid] = {
+                    "qid": qid,
+                    "label": tag_data.get("label", ""),
+                    "wikipedia_first_paragraph": para_clean,
+                }
     if os.path.exists(output_path):
         print(f"Loading existing cache from {output_path}...")
         with open(output_path, "r") as f:
@@ -840,11 +1017,15 @@ def _process_tags_wikipedia(all_items: list, output_path: str):
                     continue
                 try:
                     tag_data = json.loads(line)
-                    qid = tag_data.get("qid")
-                    if qid:
-                        existing_cache[qid] = tag_data
                 except Exception:
                     continue
+                qid = tag_data.get("qid")
+                if qid:
+                    para_clean = clean_wikipedia_first_paragraph(tag_data.get("wikipedia_first_paragraph", ""))
+                    if not para_clean:
+                        continue
+                    tag_data["wikipedia_first_paragraph"] = para_clean
+                    existing_cache[qid] = tag_data
         print(f"Found {len(existing_cache)} tags already in cache")
     
     # Filter out tags that are already processed
@@ -884,35 +1065,93 @@ def _process_tags_wikipedia(all_items: list, output_path: str):
     print(f"Saved {len(existing_cache)} tag Wikipedia paragraphs to {output_path}")
 
 
-def main():
-    """
-    Process items from input file:
-    1. For each item with a QID, fetch related_tags from Wikidata
-    2. Extract entity values as related_tags (with QIDs)
-    3. Get one-hop-related-tags for each tag
-    4. Optionally fetch Wikipedia first paragraphs for tags and save to separate file.
-    """
-    input_file = "./data/interim/4_items_with_wikipedia.jsonl"
-    
-    # Create output filenames
-    basename = os.path.basename(input_file)
-    output_file = os.path.join("./data/interim/5_items_with_tags_qids.jsonl")
-    tags_wikipedia_output_file = os.path.join("./data/interim/5_tags_wikipedia_first_paragraphs.jsonl")
-    
-    stats = process_file(input_file, output_file, tags_wikipedia_output_path=tags_wikipedia_output_file)
+def main() -> None:
+    args = parse_args()
+
+    global PARALLELISM, PER_CALL_SLEEP
+    PARALLELISM = max(1, int(args.parallelism))
+    PER_CALL_SLEEP = (min(args.min_sleep, args.max_sleep), max(args.min_sleep, args.max_sleep))
+
+    print(f"[5_SECOND_DEPTH] Using {PARALLELISM} workers.")
+
+    written_files: list[str] = []
+
+    input_file = args.input_items
+    output_file = args.output_items
+    tags_wikipedia_output_file = None if args.disable_tag_wikipedia else args.tags_wikipedia_out
+
+    stats = process_file(
+        input_file,
+        output_file,
+        tags_wikipedia_output_path=tags_wikipedia_output_file,
+        tags_wikipedia_seed_cache_path=args.tags_wikipedia_seed_cache,
+        language=args.language,
+        user_agent=args.user_agent,
+    )
+
     if stats:
-        print(f"\n  Statistics for {basename}:")
-        print(f"    Total items: {stats['total_items']}")
-        print(f"    Total tags: {stats['total_tags']}")
-        print(f"    Tags with QID: {stats['tags_with_qid']}")
-        print(f"    Tags without QID: {stats['tags_without_qid']}")
-        print(f"    Total one-hop tags: {stats['total_one_hop_tags']}")
-        if stats['total_tags'] > 0:
-            print(f"    Success rate: {stats['tags_with_qid']/stats['total_tags']*100:.1f}%")
-            print(f"    Average one-hop tags per tag: {stats['total_one_hop_tags']/stats['total_tags']:.1f}")
-        print(f"\n  Tag Wikipedia paragraphs saved to: {tags_wikipedia_output_file}")
-    
-    print("\nDone!")
+        print("\n[5_SECOND_DEPTH] Statistics")
+        print(f" - Total items: {stats['total_items']}")
+        print(f" - Total tags: {stats['total_tags']}")
+        print(f" - Tags with QID: {stats['tags_with_qid']}")
+        print(f" - Tags without QID: {stats['tags_without_qid']}")
+        print(f" - Total one-hop tags: {stats['total_one_hop_tags']}")
+
+    if os.path.exists(output_file):
+        written_files.append(output_file)
+    if tags_wikipedia_output_file and os.path.exists(tags_wikipedia_output_file):
+        written_files.append(tags_wikipedia_output_file)
+
+    # ---------------------------------------------
+    # Output summary (what was stored and where)
+    # ---------------------------------------------
+
+    def _human_size(num_bytes: int) -> str:
+        if num_bytes < 1024:
+            return f"{num_bytes} B"
+        if num_bytes < 1024**2:
+            return f"{num_bytes / 1024:.2f} KB"
+        if num_bytes < 1024**3:
+            return f"{num_bytes / (1024**2):.2f} MB"
+        return f"{num_bytes / (1024**3):.2f} GB"
+
+    def _jsonl_preview(path: str) -> str:
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                for line in handle:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    obj = json.loads(line)
+                    if isinstance(obj, dict):
+                        keys = sorted(obj.keys())
+                        return f"first_record_keys={keys}"
+                    return f"first_record_type={type(obj).__name__}"
+        except Exception as exc:
+            return f"preview_error={type(exc).__name__}"
+        return "empty_file"
+
+    uniq_written: list[str] = []
+    seen = set()
+    for p in written_files:
+        if p in seen:
+            continue
+        seen.add(p)
+        uniq_written.append(p)
+
+    print("\n[5_SECOND_DEPTH] Output summary")
+    if not uniq_written:
+        print("No output files recorded.")
+    else:
+        print(f"Recorded {len(uniq_written)} output file(s):")
+        for p in uniq_written:
+            abs_p = os.path.abspath(p)
+            if not os.path.exists(p):
+                print(f" - {abs_p} (missing)")
+                continue
+            size = _human_size(os.path.getsize(p))
+            preview = _jsonl_preview(p)
+            print(f" - {abs_p} ({size}) {preview}")
 
 
 if __name__ == "__main__":
