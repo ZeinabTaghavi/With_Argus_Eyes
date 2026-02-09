@@ -17,6 +17,30 @@ from with_argus_eyes.training.helpers import load_rank_file
 from with_argus_eyes.utils.risk.scores import get_risk_fn, normalized_score
 
 
+def _resolve_rank_file_path(workspace_root: str, retriever: str, order: str) -> str:
+    """Prefer stage-11 output path and fallback to legacy stage-8 path."""
+    candidates = [
+        os.path.join(
+            workspace_root,
+            "data",
+            "processed",
+            "11_Emb_Rank",
+            f"11_main_dataset_{order}_{retriever}.jsonl",
+        ),
+        os.path.join(
+            workspace_root,
+            "data",
+            "processed",
+            "8_Emb_Rank",
+            f"8_main_dataset_{order}_{retriever}.jsonl",
+        ),
+    ]
+    for path in candidates:
+        if os.path.exists(path):
+            return path
+    return candidates[0]
+
+
 def compute_high_low_ratio_for_combo(
     workspace_root: str,
     retriever: str,
@@ -25,19 +49,16 @@ def compute_high_low_ratio_for_combo(
     threshold: float = 0.5,
 ) -> float | None:
     """
-    For a given (retriever, order), load the JSONL produced by 8_Emb_Rank:
-        data/processed/8_Emb_Rank/8_main_dataset_{order}_{retriever}.jsonl
+    For a given (retriever, order), load the JSONL produced by stage 11:
+        data/processed/11_Emb_Rank/11_main_dataset_{order}_{retriever}.jsonl
+    Falls back to legacy stage-8 naming when needed.
 
     Compute risk scores using ratio_unrelevant_below_k, then:
         ratio = (#items with score > threshold) / (#all items with a finite score)
 
     Returns None if the file is missing or no items are found.
     """
-    temp_dir = os.path.join(workspace_root, "data", "processed", "8_Emb_Rank")
-    file_path = os.path.join(
-        temp_dir,
-        f"8_main_dataset_{order}_{retriever}.jsonl",
-    )
+    file_path = _resolve_rank_file_path(workspace_root, retriever, order)
 
     if not os.path.exists(file_path):
         print(f"[warn] file not found for retriever={retriever}, order={order}: {file_path}")
@@ -101,7 +122,7 @@ def collect_related_counts_and_scores_for_combo(
     k: int,
 ) -> tuple[np.ndarray | None, np.ndarray | None]:
     """
-    For a given (retriever, order), load the JSONL produced by 8_Emb_Rank and
+    For a given (retriever, order), load the JSONL produced by stage 11 and
     return two arrays:
 
         related_counts[i] = number of related tags for item i
@@ -114,11 +135,7 @@ def collect_related_counts_and_scores_for_combo(
     the keys 'related_tags', 'related', or 'positives' that stores the
     list of related tags. Adapt the key selection if your schema differs.
     """
-    temp_dir = os.path.join(workspace_root, "data", "processed", "8_Emb_Rank")
-    file_path = os.path.join(
-        temp_dir,
-        f"8_main_dataset_{order}_{retriever}.jsonl",
-    )
+    file_path = _resolve_rank_file_path(workspace_root, retriever, order)
 
     if not os.path.exists(file_path):
         print(f"[warn] (corr) file not found for retriever={retriever}, order={order}: {file_path}")
@@ -177,7 +194,7 @@ def main():
         default="contriever,reasonir,qwen3,jina,bge-m3,rader,reason-embed,nv-embed,gritlm",
         help=(
             "Comma-separated list of retrievers. "
-            "Must match names used in 8_Emb_Rank outputs, e.g. 'contriever,reasonir,gritlm'."
+            "Must match names used in 11_Emb_Rank outputs, e.g. 'contriever,reasonir,gritlm'."
         ),
     )
     parser.add_argument(
@@ -190,7 +207,7 @@ def main():
         "--k",
         type=int,
         default=50,
-        help="k parameter for ratio_unrelevant_below_k (must match what you used in 8_Emb_Rank).",
+        help="k parameter for ratio_unrelevant_below_k (must match what you used in 11_Emb_Rank).",
     )
     parser.add_argument(
         "--threshold",

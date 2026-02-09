@@ -16,6 +16,30 @@ from with_argus_eyes.training.helpers import load_rank_file
 from with_argus_eyes.utils.risk.scores import get_risk_fn, normalized_score
 
 
+def _resolve_rank_file_path(workspace_root: str, retriever: str, order: str) -> str:
+    """Prefer stage-11 output path and fallback to legacy stage-8 path."""
+    candidates = [
+        os.path.join(
+            workspace_root,
+            "data",
+            "processed",
+            "11_Emb_Rank",
+            f"11_main_dataset_{order}_{retriever}.jsonl",
+        ),
+        os.path.join(
+            workspace_root,
+            "data",
+            "processed",
+            "8_Emb_Rank",
+            f"8_main_dataset_{order}_{retriever}.jsonl",
+        ),
+    ]
+    for path in candidates:
+        if os.path.exists(path):
+            return path
+    return candidates[0]
+
+
 def compute_average_score_for_combo(
     workspace_root: str,
     retriever: str,
@@ -26,11 +50,7 @@ def compute_average_score_for_combo(
     Compute the mean RP-score for all items belonging to a (retriever, order) pair.
     Returns None if data is missing or no finite scores are available.
     """
-    temp_dir = os.path.join(workspace_root, "data", "processed", "8_Emb_Rank")
-    file_path = os.path.join(
-        temp_dir,
-        f"8_main_dataset_{order}_{retriever}.jsonl",
-    )
+    file_path = _resolve_rank_file_path(workspace_root, retriever, order)
 
     if not os.path.exists(file_path):
         print(
@@ -85,14 +105,14 @@ def main():
         default="contriever,reasonir,qwen3,jina,bge-m3,rader,reason-embed,nv-embed,gritlm",
         help=(
             "Comma-separated list of retrievers. "
-            "Must match names used in 8_Emb_Rank outputs, e.g. 'contriever,reasonir,gritlm'."
+            "Must match names used in 11_Emb_Rank outputs, e.g. 'contriever,reasonir,gritlm'."
         ),
     )
     parser.add_argument(
         "--k",
         type=int,
         default=50,
-        help="k parameter for ratio_unrelevant_below_k (must match what you used in 8_Emb_Rank).",
+        help="k parameter for ratio_unrelevant_below_k (must match what you used in 11_Emb_Rank).",
     )
     parser.add_argument(
         "--order",

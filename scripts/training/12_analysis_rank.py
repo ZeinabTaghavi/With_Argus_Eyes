@@ -149,6 +149,19 @@ def _resolve_workspace_path(path: str) -> str:
     return os.path.join(project_root, path)
 
 
+def _resolve_rank_file_path(base_processed_root: str, order: str, retriever: str) -> str:
+    """Resolve ranking file path; prefer stage-11 naming, fallback to legacy stage-8."""
+    candidates = [
+        os.path.join(base_processed_root, "11_Emb_Rank", f"11_main_dataset_{order}_{retriever}.jsonl"),
+        os.path.join(base_processed_root, "8_Emb_Rank", f"8_main_dataset_{order}_{retriever}.jsonl"),
+    ]
+    for path in candidates:
+        if os.path.exists(path):
+            return path
+    # Return preferred path for clearer downstream error context.
+    return candidates[0]
+
+
 def _ensure_wikipedia_texts() -> Dict[str, str]:
     """Load and cache canonical Wikipedia paragraphs keyed by qid."""
     global _WIKIPEDIA_TEXT_BY_QID
@@ -433,23 +446,24 @@ def run_risk_pipeline(
 ):
     os.makedirs(out_dir, exist_ok=True)
 
-    # If no explicit file is provided, load the order-specific items file produced by 8_Emb_Rank.py
+    # If no explicit file is provided, load order-specific items from stage-11 outputs.
+    # Falls back to legacy stage-8 naming when needed.
     if not using_file_path or not file_path:
-        # 8_Emb_Rank.py writes its output as:
-        #   {workspace_root}/data/processed/8_Emb_Rank/8_main_dataset_{order}_{retriever}.jsonl
         from pathlib import Path
         script_dir = Path(__file__).resolve().parent
         workspace_root_local = script_dir.parents[1]  # workspace root
         processed_root_local = (
             Path(processed_root) if processed_root else workspace_root_local / "data" / "processed"
         )
-        file_path = str(
-            processed_root_local
-            / "8_Emb_Rank"
-            / f"8_main_dataset_{order}_{retriever}.jsonl"
+        file_path = _resolve_rank_file_path(
+            str(processed_root_local),
+            str(order),
+            retriever,
         )
         using_file_path = True
 
+    if using_file_path:
+        print(f"[paths] rank_file: {file_path}")
     items = load_rank_file(retriever, using_file_path, file_path)
 
     # Prepare risk kwargs for RAW computation

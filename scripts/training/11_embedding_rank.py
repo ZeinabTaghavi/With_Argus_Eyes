@@ -3,6 +3,7 @@
 import os
 import sys
 import json
+import glob
 import random
 import argparse
 import re
@@ -209,6 +210,57 @@ def _resolve_workspace_path(path: str) -> str:
     if os.path.isabs(path):
         return path
     return os.path.join(workspace_root, path)
+
+
+def _human_size(num_bytes: int) -> str:
+    if num_bytes < 1024:
+        return f"{num_bytes} B"
+    if num_bytes < 1024**2:
+        return f"{num_bytes / 1024:.2f} KB"
+    if num_bytes < 1024**3:
+        return f"{num_bytes / (1024**2):.2f} MB"
+    return f"{num_bytes / (1024**3):.2f} GB"
+
+
+def _jsonl_preview(path: str) -> str:
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                obj = json.loads(line)
+                if isinstance(obj, dict):
+                    return f"first_record_keys={sorted(obj.keys())}"
+                return f"first_record_type={type(obj).__name__}"
+    except Exception as exc:
+        return f"preview_error={type(exc).__name__}"
+    return "empty_file"
+
+
+def _print_output_summary(stage_name: str, written_files: List[str]) -> None:
+    uniq_written: List[str] = []
+    seen = set()
+    for p in written_files:
+        if p in seen:
+            continue
+        seen.add(p)
+        uniq_written.append(p)
+
+    print(f"\n[{stage_name}] Output summary")
+    if not uniq_written:
+        print("No output files recorded.")
+        return
+
+    print(f"Recorded {len(uniq_written)} output file(s):")
+    for p in uniq_written:
+        abs_p = os.path.abspath(p)
+        if not os.path.exists(p):
+            print(f" - {abs_p} (missing)")
+            continue
+        size = _human_size(os.path.getsize(p))
+        preview = _jsonl_preview(p) if p.endswith(".jsonl") else "preview_skipped"
+        print(f" - {abs_p} ({size}) {preview}")
 
 
 def _filter_non_relation_map_by_wiki(
@@ -881,7 +933,11 @@ def main():
         updated.extend(part)
 
     # Save merged results
-    out_path = os.path.join(processed_root, "8_Emb_Rank", f"8_main_dataset_{order_value}_{args.retriever}.jsonl")
+    out_path = os.path.join(
+        processed_root,
+        "11_Emb_Rank",
+        f"11_main_dataset_{order_value}_{args.retriever}.jsonl",
+    )
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as f:
         for it in updated:
@@ -889,6 +945,11 @@ def main():
 
     print(f"Processed {len(updated)} items across {num_workers} worker(s)")
     print(f"Saved merged results -> {out_path}")
+    written_files: List[str] = [out_path]
+    if args.shard_output_dir and os.path.isdir(args.shard_output_dir):
+        shard_paths = sorted(glob.glob(os.path.join(args.shard_output_dir, "shard_*.jsonl")))
+        written_files.extend(shard_paths)
+    _print_output_summary("11_EMBEDDING_RANK", written_files)
 
 
 if __name__ == "__main__":
