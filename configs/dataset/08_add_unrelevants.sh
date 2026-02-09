@@ -8,4 +8,6 @@ source "${THIS_DIR}/00_env.sh"
 PYTHON=${PYTHON:-python}
 
 "${PYTHON}" "${WORKSPACE_ROOT}/scripts/dataset/08_add_unrelevants.py" \
-  --out "${ARGUS_INTERIM_ROOT}/6_unrelevant_qids.jsonl"
+  --all_relation_tags "${ARGUS_INTERIM_ROOT}/7_all_relation_tags.json" \
+  --main_dataset "${ARGUS_INTERIM_ROOT}/6_main_dataset.jsonl" \
+  --out "${ARGUS_INTERIM_ROOT}/8_unrelevant_qids.jsonl"

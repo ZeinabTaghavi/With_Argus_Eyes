@@ -10,6 +10,7 @@ PYTHON=${PYTHON:-python}
 "${PYTHON}" "${WORKSPACE_ROOT}/scripts/dataset/02_get_tags.py" \
   --hf_base "${ARGUS_HF_BASE}" \
   --base_path "${ARGUS_INTERIM_ROOT}/2_tag_only" \
-  --m_million 0 \
+  --m_million 7 \
   --parallelism 16 \
-  --split_size 100000
+  --split_size 100000 \
+  --prune_merged_inputs

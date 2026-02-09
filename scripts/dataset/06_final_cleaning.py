@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import os
 from tqdm import tqdm
 
 def wikipedia_page_cleaning(item):
@@ -26,6 +27,8 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+
+    written_files: list[str] = []
 
     print("Loading items with tags from:", args.items_with_tags)
     with open(args.items_with_tags, "r") as f:
@@ -76,6 +79,8 @@ def main() -> None:
             else:
                 num_skipped += 1
     print(f"Saved {num_cleaned} valid wikipedia pages. Skipped {num_skipped} invalid entries.")
+    if os.path.exists(output_path):
+        written_files.append(output_path)
 
     main_dataset = []
     removing_Data = []
@@ -108,6 +113,60 @@ def main() -> None:
         for item in main_dataset:
             f.write(json.dumps(item) + '\n')
     print(f"Saved {len(main_dataset)} items to {output_main_dataset_path}")
+    if os.path.exists(output_main_dataset_path):
+        written_files.append(output_main_dataset_path)
+
+    # ---------------------------------------------
+    # Output summary (what was stored and where)
+    # ---------------------------------------------
+
+    def _human_size(num_bytes: int) -> str:
+        if num_bytes < 1024:
+            return f"{num_bytes} B"
+        if num_bytes < 1024**2:
+            return f"{num_bytes / 1024:.2f} KB"
+        if num_bytes < 1024**3:
+            return f"{num_bytes / (1024**2):.2f} MB"
+        return f"{num_bytes / (1024**3):.2f} GB"
+
+    def _jsonl_preview(path: str) -> str:
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                for line in handle:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    obj = json.loads(line)
+                    if isinstance(obj, dict):
+                        keys = sorted(obj.keys())
+                        return f"first_record_keys={keys}"
+                    return f"first_record_type={type(obj).__name__}"
+        except Exception as exc:
+            return f"preview_error={type(exc).__name__}"
+        return "empty_file"
+
+    # de-dupe while preserving order
+    uniq_written: list[str] = []
+    seen = set()
+    for p in written_files:
+        if p in seen:
+            continue
+        seen.add(p)
+        uniq_written.append(p)
+
+    print("\n[6_FINAL_CLEANING] Output summary")
+    if not uniq_written:
+        print("No output files recorded.")
+    else:
+        print(f"Recorded {len(uniq_written)} output file(s):")
+        for p in uniq_written:
+            abs_p = os.path.abspath(p)
+            if not os.path.exists(p):
+                print(f" - {abs_p} (missing)")
+                continue
+            size = _human_size(os.path.getsize(p))
+            preview = _jsonl_preview(p)
+            print(f" - {abs_p} ({size}) {preview}")
 
 
 if __name__ == "__main__":

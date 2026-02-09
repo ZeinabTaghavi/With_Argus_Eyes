@@ -6,12 +6,25 @@ import argparse
 import random
 from tqdm import tqdm
 import multiprocessing as mp
+from typing import Any
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Add irrelevant tags to the dataset.")
     parser.add_argument("--order", type=int, default=5000, help="Number of unrelevant tags to sample per qid.")
     parser.add_argument("--out", type=str, default='./data/interim/6_unrelevant_qids.jsonl', help="Output JSONL path.")
     parser.add_argument("--workers", type=int, default=os.cpu_count(), help="Number of worker processes.")
+    parser.add_argument(
+        "--all_relation_tags",
+        type=str,
+        default="./data/interim/7_all_relation_tags.json",
+        help="Input JSON mapping qid -> {qid,label,related_tags:[{qid,label},...]} (output of stage 07).",
+    )
+    parser.add_argument(
+        "--main_dataset",
+        type=str,
+        default="./data/interim/6_main_dataset.jsonl",
+        help="Input JSONL main dataset (output of stage 06).",
+    )
     return parser.parse_args()
 
 # -------------------------------------------------------------
@@ -66,11 +79,26 @@ def _compute_and_write_unrelevant(target_qid: str):
     return True
 
 
-def return_unrelevant_tags_to_jsonl(main_dataset_items, all_qid_related_tags, all_qids, out_jsonl, num_workers=None, order=100):
+def _ensure_parent_dir(path: str) -> None:
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+
+
+def return_unrelevant_tags_to_jsonl(
+    main_dataset_items,
+    all_qid_related_tags,
+    all_qids,
+    out_jsonl,
+    num_workers=None,
+    order=100,
+):
     """
     Parallel computation that writes each (qid, sampled_unrelevant_list) as one JSONL line to `out_jsonl`.
     Randomly samples `order` unrelevant qids per target qid without constructing massive complement lists.
     """
+    _ensure_parent_dir(out_jsonl)
+
     # Collect unique 'relevant' qids appearing in main dataset
     relevant_qids = []
     seen = set()
@@ -83,6 +111,7 @@ def return_unrelevant_tags_to_jsonl(main_dataset_items, all_qid_related_tags, al
 
     if not relevant_qids:
         # touch empty file for consistency
+        _ensure_parent_dir(out_jsonl)
         with open(out_jsonl, "w", encoding="utf-8") as _:
             pass
         return
@@ -113,6 +142,50 @@ def return_unrelevant_tags_to_jsonl(main_dataset_items, all_qid_related_tags, al
             pass
 
 
+def _human_size(num_bytes: int) -> str:
+    if num_bytes < 1024:
+        return f"{num_bytes} B"
+    if num_bytes < 1024**2:
+        return f"{num_bytes / 1024:.2f} KB"
+    if num_bytes < 1024**3:
+        return f"{num_bytes / (1024**2):.2f} MB"
+    return f"{num_bytes / (1024**3):.2f} GB"
+
+
+def _jsonl_preview(path: str) -> str:
+    """
+    For JSONL: preview first record keys.
+    For JSON: preview first value record keys if mapping-like.
+    """
+    try:
+        if path.endswith(".jsonl"):
+            with open(path, "r", encoding="utf-8") as handle:
+                for line in handle:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    obj = json.loads(line)
+                    if isinstance(obj, dict):
+                        return f"first_record_keys={sorted(obj.keys())}"
+                    return f"first_record_type={type(obj).__name__}"
+            return "empty_file"
+    except Exception as exc:
+        return f"preview_error={type(exc).__name__}"
+
+    # JSON: for this pipeline the expected structure is dict[qid] -> record
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            obj = json.load(handle)
+        if isinstance(obj, dict) and obj:
+            first_val = next(iter(obj.values()))
+            if isinstance(first_val, dict):
+                return f"first_record_keys={sorted(first_val.keys())}"
+            return f"first_record_type={type(first_val).__name__}"
+        return "empty_file"
+    except Exception as exc:
+        return f"preview_error={type(exc).__name__}"
+
+
 def main() -> None:
     print("Number of CPUs available:", os.cpu_count())
 
@@ -121,19 +194,21 @@ def main() -> None:
     # -------------------------------------------------------------
     # Load inputs
     # -------------------------------------------------------------
-    with open('./data/interim/6_all_relation_tags.json', 'r') as f:
-        all_relation_tags = json.load(f)
-    print(f"Loaded {len(all_relation_tags)} entries from 6_all_relation_tags.json")
+    print("Loading all relation tags from:", args.all_relation_tags)
+    with open(args.all_relation_tags, "r", encoding="utf-8") as f:
+        all_relation_tags: dict[str, Any] = json.load(f)
+    print(f"Loaded {len(all_relation_tags)} entries from {args.all_relation_tags}")
 
-    with open('./data/interim/6_main_dataset.jsonl', 'r') as f:
-        main_dataset = [json.loads(line) for line in f]
-    print(f"Loaded {len(main_dataset)} entries from 6_main_dataset.jsonl")
+    print("Loading main dataset from:", args.main_dataset)
+    with open(args.main_dataset, "r", encoding="utf-8") as f:
+        main_dataset = [json.loads(line) for line in f if line.strip()]
+    print(f"Loaded {len(main_dataset)} entries from {args.main_dataset}")
 
     # Build mapping: qid -> set(related_qids) and the global universe of qids
     all_qids_set = set()
     all_qid_related_tags = {}
-    for qid, tags in tqdm(all_relation_tags.items(), total=len(all_relation_tags), desc="Gathering all qids"):
-        tags_qids = [t['qid'] for t in tags['related_tags']]
+    for qid, rec in tqdm(all_relation_tags.items(), total=len(all_relation_tags), desc="Gathering all qids"):
+        tags_qids = [t.get("qid") for t in (rec.get("related_tags") or []) if isinstance(t, dict) and t.get("qid")]
         all_qid_related_tags[qid] = set(tags_qids)
         all_qids_set.update(tags_qids)
 
@@ -150,6 +225,35 @@ def main() -> None:
     )
     print(f"Wrote per-qid unrelevant lists to: {out_path}")
 
+    # ---------------------------------------------
+    # Output summary (what was stored and where)
+    # ---------------------------------------------
+    written_files: list[str] = []
+    if os.path.exists(out_path):
+        written_files.append(out_path)
+
+    uniq_written: list[str] = []
+    seen = set()
+    for p in written_files:
+        if p in seen:
+            continue
+        seen.add(p)
+        uniq_written.append(p)
+
+    print("\n[8_ADD_UNRELEVANTS] Output summary")
+    if not uniq_written:
+        print("No output files recorded.")
+    else:
+        print(f"Recorded {len(uniq_written)} output file(s):")
+        for p in uniq_written:
+            abs_p = os.path.abspath(p)
+            if not os.path.exists(p):
+                print(f" - {abs_p} (missing)")
+                continue
+            size = _human_size(os.path.getsize(p))
+            preview = _jsonl_preview(p)
+            print(f" - {abs_p} ({size}) {preview}")
+
 
 if __name__ == "__main__":
     main()
@@ -158,6 +262,8 @@ if __name__ == "__main__":
 '''
 python scripts/dataset/08_add_unrelevants.py \
   --order 5000 \
+  --all_relation_tags ./data/interim/7_all_relation_tags.json \
+  --main_dataset ./data/interim/6_main_dataset.jsonl \
   --out ./data/interim/6_unrelevant_qids.jsonl \
 
 '''
