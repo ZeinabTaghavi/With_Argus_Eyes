@@ -236,6 +236,10 @@ def _filter_items_by_wiki_coverage(
     dropped_missing_item_qid = 0
     dropped_no_usable_related = 0
     related_tags_removed = 0
+    removed_missing_related_qid = 0
+    removed_related_not_in_wiki = 0
+    removed_missing_non_rel_map = 0
+    used_item_level_non_rel_map = 0
 
     for item in items:
         item_qid = item.get("qid")
@@ -252,17 +256,23 @@ def _filter_items_by_wiki_coverage(
         for tag in raw_related:
             if not isinstance(tag, dict):
                 related_tags_removed += 1
+                removed_missing_related_qid += 1
                 continue
             rel_qid = tag.get("qid")
             if not isinstance(rel_qid, str):
                 related_tags_removed += 1
+                removed_missing_related_qid += 1
                 continue
             if rel_qid not in wiki_qids:
                 related_tags_removed += 1
+                removed_related_not_in_wiki += 1
                 continue
-            if rel_qid not in non_rel_map:
+            if rel_qid not in non_rel_map and item_qid not in non_rel_map:
                 related_tags_removed += 1
+                removed_missing_non_rel_map += 1
                 continue
+            if rel_qid not in non_rel_map and item_qid in non_rel_map:
+                used_item_level_non_rel_map += 1
             usable_related.append(tag)
 
         if not usable_related:
@@ -277,6 +287,10 @@ def _filter_items_by_wiki_coverage(
         "dropped_missing_item_qid": dropped_missing_item_qid,
         "dropped_no_usable_related": dropped_no_usable_related,
         "related_tags_removed": related_tags_removed,
+        "removed_missing_related_qid": removed_missing_related_qid,
+        "removed_related_not_in_wiki": removed_related_not_in_wiki,
+        "removed_missing_non_rel_map": removed_missing_non_rel_map,
+        "used_item_level_non_rel_map": used_item_level_non_rel_map,
     }
     return kept, stats
 
@@ -528,6 +542,7 @@ def process_chunk(start_end_worker: Tuple[int, int, int, int, str | None]) -> Tu
 
     rank_key = f"rank_among_unrelevant_tags_{order_value_local}"
     sample_size_key = f"{rank_key}_sample_size"
+    item_level_unrel_fallbacks = 0
 
     for item in tqdm(main_items[start:end], desc=f"worker[{worker_idx}]", unit="item", leave=False):
         try:
@@ -544,9 +559,18 @@ def process_chunk(start_end_worker: Tuple[int, int, int, int, str | None]) -> Tu
                 if rel_qid is None:
                     raise ValueError(f"rel_qid is None for relevant_tag: {relevant_tag}")
 
-                unrelevant_tags = list(non_relation_tag_data[rel_qid])
+                # Prefer tag-level unrelevants. Fallback to item-level unrelevants
+                # for datasets generated with older stage-08 keying.
+                unrelevant_tags = list(non_relation_tag_data.get(rel_qid, []))
                 if not unrelevant_tags:
-                    raise ValueError(f"unrelevant_tags is empty for rel_qid: {rel_qid}")
+                    unrelevant_tags = list(non_relation_tag_data.get(qid, []))
+                    if unrelevant_tags:
+                        item_level_unrel_fallbacks += 1
+                if not unrelevant_tags:
+                    raise ValueError(
+                        f"unrelevant_tags is empty for rel_qid={rel_qid} "
+                        f"(and item_qid={qid})"
+                    )
 
                 random.shuffle(unrelevant_tags)
 
@@ -596,6 +620,12 @@ def process_chunk(start_end_worker: Tuple[int, int, int, int, str | None]) -> Tu
 
     if shard_fp:
         shard_fp.close()
+
+    if item_level_unrel_fallbacks:
+        print(
+            f"[worker {worker_idx}] used item-level unrelevant fallback "
+            f"{item_level_unrel_fallbacks} time(s)."
+        )
 
     return (start, local_items)
 
@@ -786,7 +816,11 @@ def main():
         f"kept={len(main_items)}, "
         f"dropped_missing_item_qid={coverage_stats['dropped_missing_item_qid']}, "
         f"dropped_no_usable_related={coverage_stats['dropped_no_usable_related']}, "
-        f"related_tags_removed={coverage_stats['related_tags_removed']}"
+        f"related_tags_removed={coverage_stats['related_tags_removed']}, "
+        f"removed_missing_related_qid={coverage_stats['removed_missing_related_qid']}, "
+        f"removed_related_not_in_wiki={coverage_stats['removed_related_not_in_wiki']}, "
+        f"removed_missing_non_rel_map={coverage_stats['removed_missing_non_rel_map']}, "
+        f"used_item_level_non_rel_map={coverage_stats['used_item_level_non_rel_map']}"
     )
 
     if not main_items:
