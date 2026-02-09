@@ -27,6 +27,39 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run embedding-rank experiments for multiple retrievers.")
     parser.add_argument("--config", type=str, default="", help="Path to flat YAML config.")
     parser.add_argument(
+        "--data_root",
+        type=str,
+        default=os.environ.get("ARGUS_DATA_ROOT", "data"),
+        help="Base data directory (contains interim/ and processed/).",
+    )
+    parser.add_argument(
+        "--processed_root",
+        type=str,
+        default=os.environ.get("ARGUS_PROCESSED_ROOT", ""),
+        help="Processed data directory. Defaults to <data_root>/processed.",
+    )
+    parser.add_argument(
+        "--interim_root",
+        type=str,
+        default=os.environ.get("ARGUS_INTERIM_ROOT", ""),
+        help="Interim data directory. Defaults to <data_root>/interim.",
+    )
+    parser.add_argument("--main_dataset_path", type=str, default="", help="Optional explicit path to main dataset JSONL.")
+    parser.add_argument("--wikipedia_pages_path", type=str, default="", help="Optional explicit path to Wikipedia cache JSONL.")
+    parser.add_argument("--wiki_unrelevants_path", type=str, default="", help="Optional explicit path to unrelevant-tags index JSONL.")
+    parser.add_argument(
+        "--embedding_cache_dir",
+        type=str,
+        default=os.environ.get("ARGUS_EMBED_CACHE_ROOT", ""),
+        help="Directory for cached embeddings (.npz). Defaults to outputs/cache/embeddings.",
+    )
+    parser.add_argument(
+        "--hf_base",
+        type=str,
+        default=os.environ.get("ARGUS_HF_BASE", "../../../../data/proj/zeinabtaghavi"),
+        help="Base directory for HF cache env vars.",
+    )
+    parser.add_argument(
         "--retriever",
         type=str,
         default="contriever",
@@ -167,6 +200,13 @@ def _resolve_first_existing_path(
         raise FileNotFoundError(message)
     print(f"[warn] {message}")
     return None
+
+
+def _resolve_workspace_path(path: str) -> str:
+    """Resolve relative paths against repo root for stable behavior."""
+    if os.path.isabs(path):
+        return path
+    return os.path.join(workspace_root, path)
 
 
 def _filter_non_relation_map_by_wiki(
@@ -572,7 +612,8 @@ def main():
     os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
     # Optional: set HF caches
-    BASE = "../../../../data/proj/zeinabtaghavi"
+    BASE = args.hf_base
+    os.environ["HF_BASE"]           = BASE
     os.environ["HF_HOME"]           = BASE
     os.environ["HF_HUB_CACHE"]      = f"{BASE}/hub"
     os.environ["HF_DATASETS_CACHE"] = f"{BASE}/datasets"
@@ -598,8 +639,23 @@ def main():
                 print(f"[warn] Invalid order value in config: {_cfg['order']}, using default")
         if "cuda_visible_devices" in _cfg:
             os.environ["CUDA_VISIBLE_DEVICES"] = _cfg["cuda_visible_devices"]
+        if "data_root" in _cfg:
+            args.data_root = _cfg["data_root"]
+        if "processed_root" in _cfg:
+            args.processed_root = _cfg["processed_root"]
+        if "interim_root" in _cfg:
+            args.interim_root = _cfg["interim_root"]
+        if "main_dataset_path" in _cfg:
+            args.main_dataset_path = _cfg["main_dataset_path"]
+        if "wikipedia_pages_path" in _cfg:
+            args.wikipedia_pages_path = _cfg["wikipedia_pages_path"]
+        if "wiki_unrelevants_path" in _cfg:
+            args.wiki_unrelevants_path = _cfg["wiki_unrelevants_path"]
+        if "embedding_cache_dir" in _cfg:
+            args.embedding_cache_dir = _cfg["embedding_cache_dir"]
         if "hf_base" in _cfg:
             BASE = _cfg["hf_base"]
+            args.hf_base = BASE
             os.environ["HF_BASE"] = BASE
             os.environ["HF_HOME"] = BASE
             os.environ["HF_HUB_CACHE"] = f"{BASE}/hub"
@@ -607,32 +663,70 @@ def main():
 
     order_value = args.order if args.order is not None else args.o
 
+    data_root = _resolve_workspace_path(args.data_root)
+    processed_root = (
+        _resolve_workspace_path(args.processed_root)
+        if args.processed_root
+        else os.path.join(data_root, "processed")
+    )
+    interim_root = (
+        _resolve_workspace_path(args.interim_root)
+        if args.interim_root
+        else os.path.join(data_root, "interim")
+    )
+    os.environ["ARGUS_DATA_ROOT"] = data_root
+    os.environ["ARGUS_PROCESSED_ROOT"] = processed_root
+    os.environ["ARGUS_INTERIM_ROOT"] = interim_root
+    print(f"[paths] data_root: {data_root}")
+    print(f"[paths] interim_root: {interim_root}")
+    print(f"[paths] processed_root: {processed_root}")
+
     # ---------------------------
     # Input paths
     # ---------------------------
+    non_rel_candidates: List[str] = []
+    if args.wiki_unrelevants_path:
+        non_rel_candidates.append(_resolve_workspace_path(args.wiki_unrelevants_path))
+    non_rel_candidates.extend(
+        [
+            os.path.join(processed_root, "wiki_unrelevants_results.jsonl"),
+            os.path.join(interim_root, "9_wiki_unrelevants_results.jsonl"),
+        ]
+    )
     NON_RELATION_TAGS_PATH = _resolve_first_existing_path(
         "wiki unrelevants index",
-        [
-            os.path.join(workspace_root, "data", "processed", "wiki_unrelevants_results.jsonl"),
-            os.path.join(workspace_root, "data", "interim", "9_wiki_unrelevants_results.jsonl"),
-        ],
+        non_rel_candidates,
         required=False,
+    )
+
+    wiki_candidates: List[str] = []
+    if args.wikipedia_pages_path:
+        wiki_candidates.append(_resolve_workspace_path(args.wikipedia_pages_path))
+    wiki_candidates.extend(
+        [
+            os.path.join(processed_root, "wikipedia_all_relevant_results.jsonl"),
+            os.path.join(interim_root, "4_tags_wikipedia_first_paragraphs_cache.jsonl"),
+            os.path.join(processed_root, "7_all_wikipedia_pages.jsonl"),
+        ]
     )
     WIKIPEDIA_PAGES_PATH = _resolve_first_existing_path(
         "wikipedia paragraph cache",
-        [
-            os.path.join(workspace_root, "data", "processed", "wikipedia_all_relevant_results.jsonl"),
-            os.path.join(workspace_root, "data", "interim", "4_tags_wikipedia_first_paragraphs_cache.jsonl"),
-            os.path.join(workspace_root, "data", "processed", "7_all_wikipedia_pages.jsonl"),
-        ],
+        wiki_candidates,
         required=True,
+    )
+
+    main_candidates: List[str] = []
+    if args.main_dataset_path:
+        main_candidates.append(_resolve_workspace_path(args.main_dataset_path))
+    main_candidates.extend(
+        [
+            os.path.join(processed_root, "main_dataset.jsonl"),
+            os.path.join(interim_root, "6_main_dataset.jsonl"),
+        ]
     )
     MAIN_DATASET_PATH = _resolve_first_existing_path(
         "main dataset",
-        [
-            os.path.join(workspace_root, "data", "processed", "main_dataset.jsonl"),
-            os.path.join(workspace_root, "data", "interim", "6_main_dataset.jsonl"),
-        ],
+        main_candidates,
         required=True,
     )
 
@@ -701,8 +795,13 @@ def main():
             "Ensure the wikipedia cache contains qid-linked rows."
         )
 
-    cache_dir = os.path.join(workspace_root, "outputs", "cache", "embedding_cache", "embeddings")
+    cache_dir = (
+        _resolve_workspace_path(args.embedding_cache_dir)
+        if args.embedding_cache_dir
+        else os.path.join(workspace_root, "outputs", "cache", "embeddings")
+    )
     os.makedirs(cache_dir, exist_ok=True)
+    print(f"[paths] embedding_cache_dir: {cache_dir}")
 
     gpus = parse_gpu_ids()
     if not gpus:
@@ -746,7 +845,7 @@ def main():
         updated.extend(part)
 
     # Save merged results
-    out_path = os.path.join(workspace_root, "data", "processed", "8_Emb_Rank", f"8_main_dataset_{order_value}_{args.retriever}.jsonl")
+    out_path = os.path.join(processed_root, "8_Emb_Rank", f"8_main_dataset_{order_value}_{args.retriever}.jsonl")
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as f:
         for it in updated:

@@ -1,43 +1,33 @@
-#  !/usr/bin/env bash
+#!/usr/bin/env bash
 set -euo pipefail
 
-
-
-# ls ../../../../data/proj/zeinabtaghavi/embeddings/
-# bge-m3_span.npz  contriever_span.npz  gritlm_span.npz  jina_span.npz  nv-embed_span.npz  qwen3_span.npz  reason-embed_span.npz  reasonir_span.npz
-
-# ------------------------------------------------------------------
-# Basic paths (adapt if your layout differs)
-# ------------------------------------------------------------------
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-ROOT_DIR="$( cd "${SCRIPT_DIR}/../.." && pwd )"
-cd "${ROOT_DIR}"
+WORKSPACE_ROOT="$( cd "${SCRIPT_DIR}/../.." && pwd )"
+source "${WORKSPACE_ROOT}/configs/dataset/00_env.sh"
 
-# ------------------------------------------------------------------
-# HF caching (same convention as 11_embedding_rank.py)
-# ------------------------------------------------------------------
-export HF_BASE="../../../../data/proj/zeinabtaghavi"
-export HF_HOME="${HF_BASE}"
-export HF_HUB_CACHE="${HF_BASE}/hub"
-export HF_DATASETS_CACHE="${HF_BASE}/datasets"
+PYTHON="${PYTHON:-python}"
+SCRIPT="${WORKSPACE_ROOT}/scripts/training/12_analysis_rank.py"
 
+# Hugging Face cache root used by training scripts.
+export ARGUS_HF_BASE="${ARGUS_HF_BASE:-../../../../data/proj/zeinabtaghavi}"
+export HF_BASE="${ARGUS_HF_BASE}"
+export HF_HOME="${HF_HOME:-${HF_BASE}}"
+export HF_HUB_CACHE="${HF_HUB_CACHE:-${HF_HOME}/hub}"
+export HF_DATASETS_CACHE="${HF_DATASETS_CACHE:-${HF_HOME}/datasets}"
+
+# Dedicated embedding cache directory (new unified folder).
+export ARGUS_EMBED_CACHE_ROOT="${ARGUS_EMBED_CACHE_ROOT:-${WORKSPACE_ROOT}/outputs/cache/embeddings}"
+export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-2}"
+mkdir -p "${ARGUS_EMBED_CACHE_ROOT}"
 
 echo "HF_HOME:             ${HF_HOME}"
 echo "HF_HUB_CACHE:        ${HF_HUB_CACHE}"
 echo "HF_DATASETS_CACHE:   ${HF_DATASETS_CACHE}"
+echo "ARGUS_DATA_ROOT:     ${ARGUS_DATA_ROOT}"
+echo "ARGUS_INTERIM_ROOT:  ${ARGUS_INTERIM_ROOT}"
+echo "ARGUS_PROCESSED_ROOT:${ARGUS_PROCESSED_ROOT}"
+echo "EMBED_CACHE_DIR:     ${ARGUS_EMBED_CACHE_ROOT}"
 
-# ------------------------------------------------------------------
-# Configurable knobs
-# ------------------------------------------------------------------
-# Choose retrievers and orders to evaluate; these must match the output
-# of your 11_embedding_rank.py script.
-# "contriever" "reasonir" "qwen3" "jina" "bge-m3" "reason-embed" "nv-embed" "gritlm" 
-# 0: reasonir  jina
-# 1: qwen3 bge-m3
-# 2: reason-embed nv-embed gritlm
-# "qwen3" "reason-embed" "nv-embed" "reasonir"
-# configs/training/12_analysis_rank.sh
-export CUDA_VISIBLE_DEVICES="2"
 RETRIEVERS=("nv-embed")
 ORDERS=(800)
 K=(10 20)
@@ -58,10 +48,6 @@ SAVE_MODELS="true"
 # Set to "true" to plot the combined LDA+histogram; "false" to skip
 PLOT="false"
 
-
-# ------------------------------------------------------------------
-# Main loop
-# ------------------------------------------------------------------
 for k in "${K[@]}"; do
   for retriever in "${RETRIEVERS[@]}"; do
     for order in "${ORDERS[@]}"; do
@@ -69,8 +55,12 @@ for k in "${K[@]}"; do
       echo "[RUN] retriever=${retriever} order=${order}"
       echo "==============================================="
 
-      # Run the analysis script; ensure the final line does not end with a backslash.
-      python scripts/training/12_analysis_rank.py \
+      "${PYTHON}" "${SCRIPT}" \
+        --data_root "${ARGUS_DATA_ROOT}" \
+        --processed_root "${ARGUS_PROCESSED_ROOT}" \
+        --interim_root "${ARGUS_INTERIM_ROOT}" \
+        --embedding_cache_dir "${ARGUS_EMBED_CACHE_ROOT}" \
+        --hf_base "${ARGUS_HF_BASE}" \
         --retriever "${retriever}" \
         --order "${order}" \
         --k "${k}" \

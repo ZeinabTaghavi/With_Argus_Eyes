@@ -8,6 +8,12 @@ import numpy as np
 import random
 import argparse
 
+# Add project root to Python path before project-local imports.
+script_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.abspath(os.path.join(script_dir, '..', '..'))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
 
 from with_argus_eyes.training.helpers import load_rank_file, stub_name, compute_and_print_risk_scores_for_jsonl
 from with_argus_eyes.utils.risk.scores import get_risk_fn, normalized_score
@@ -47,6 +53,37 @@ def _load_flat_yaml(path: str) -> dict:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Aggregate ranking analysis and generate summary figures.")
     parser.add_argument("--config", type=str, default="", help="Path to flat YAML config.")
+    parser.add_argument(
+        "--data_root",
+        type=str,
+        default=os.environ.get("ARGUS_DATA_ROOT", "data"),
+        help="Base data directory (contains interim/ and processed/).",
+    )
+    parser.add_argument(
+        "--processed_root",
+        type=str,
+        default=os.environ.get("ARGUS_PROCESSED_ROOT", ""),
+        help="Processed data directory. Defaults to <data_root>/processed.",
+    )
+    parser.add_argument(
+        "--interim_root",
+        type=str,
+        default=os.environ.get("ARGUS_INTERIM_ROOT", ""),
+        help="Interim data directory. Defaults to <data_root>/interim.",
+    )
+    parser.add_argument("--wikipedia_pages_path", type=str, default="", help="Optional explicit path to Wikipedia cache JSONL.")
+    parser.add_argument(
+        "--embedding_cache_dir",
+        type=str,
+        default=os.environ.get("ARGUS_EMBED_CACHE_ROOT", ""),
+        help="Directory for cached embeddings (.npz). Defaults to outputs/cache/embeddings.",
+    )
+    parser.add_argument(
+        "--hf_base",
+        type=str,
+        default=os.environ.get("ARGUS_HF_BASE", "../../../../data/proj/zeinabtaghavi"),
+        help="Base directory for HF cache env vars.",
+    )
     parser.add_argument("--retriever", type=str, default="contriever", choices=["contriever", "reasonir", "qwen3", "jina", "bge-m3", "rader", "reason-embed", "nv-embed", "gritlm"])
     parser.add_argument("--order", type=str, default=800, help="Tag universe order per item, e.g., 'all' or '10000'.")
     parser.add_argument('--k', type=int, default=50, help="Number of top tags to consider for risk calculation.")
@@ -73,14 +110,9 @@ k_value: int | None = None
 retriever_value: str | None = None
 out_dir_value: str | None = None
 workspace_root: str | None = None
+processed_root: str | None = None
 WIKIPEDIA_PAGES_PATH: str | None = None
 cache_dir: str | None = None
-
-# Add project root to Python path
-script_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.abspath(os.path.join(script_dir, '..', '..'))
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
 
 _WIKIPEDIA_TEXT_BY_QID: Dict[str, str] | None = None
 _RETRIEVER_CACHE: Dict[str, Any] = {}
@@ -106,6 +138,13 @@ def _resolve_first_existing_path(
         raise FileNotFoundError(message)
     print(f"[warn] {message}")
     return None
+
+
+def _resolve_workspace_path(path: str) -> str:
+    """Resolve relative paths against repo root for stable behavior."""
+    if os.path.isabs(path):
+        return path
+    return os.path.join(project_root, path)
 
 
 def _ensure_wikipedia_texts() -> Dict[str, str]:
@@ -399,10 +438,11 @@ def run_risk_pipeline(
         from pathlib import Path
         script_dir = Path(__file__).resolve().parent
         workspace_root_local = script_dir.parents[1]  # workspace root
+        processed_root_local = (
+            Path(processed_root) if processed_root else workspace_root_local / "data" / "processed"
+        )
         file_path = str(
-            workspace_root_local
-            / "data"
-            / "processed"
+            processed_root_local
             / "8_Emb_Rank"
             / f"8_main_dataset_{order}_{retriever}.jsonl"
         )
@@ -564,7 +604,7 @@ def run_risk_pipeline(
 
 
 def main() -> None:
-    global args, order_value, k_value, retriever_value, out_dir_value, workspace_root, WIKIPEDIA_PAGES_PATH, cache_dir
+    global args, order_value, k_value, retriever_value, out_dir_value, workspace_root, processed_root, WIKIPEDIA_PAGES_PATH, cache_dir
 
     args = parse_args()
 
@@ -586,12 +626,19 @@ def main() -> None:
         if "use_mlp_configs" in _cfg: args.use_mlp_configs = str(_cfg["use_mlp_configs"]).lower() in ("1","true","yes","y")
         if "train_mode" in _cfg: args.train_mode = str(_cfg["train_mode"]).lower() in ("1","true","yes","y")
         if "plot" in _cfg: args.plot = str(_cfg["plot"]).lower() in ("1","true","yes","y")
+        if "data_root" in _cfg: args.data_root = _cfg["data_root"]
+        if "processed_root" in _cfg: args.processed_root = _cfg["processed_root"]
+        if "interim_root" in _cfg: args.interim_root = _cfg["interim_root"]
+        if "wikipedia_pages_path" in _cfg: args.wikipedia_pages_path = _cfg["wikipedia_pages_path"]
+        if "embedding_cache_dir" in _cfg: args.embedding_cache_dir = _cfg["embedding_cache_dir"]
+        if "hf_base" in _cfg: args.hf_base = _cfg["hf_base"]
 
     # Allow override by config or env
     os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
     # Optional: set HF caches
-    BASE = "../../../../data/proj/zeinabtaghavi"
+    BASE = args.hf_base
+    os.environ["HF_BASE"]           = BASE
     os.environ["HF_HOME"]           = BASE
     os.environ["HF_HUB_CACHE"]      = f"{BASE}/hub"
     os.environ["HF_DATASETS_CACHE"] = f"{BASE}/datasets"
@@ -608,19 +655,48 @@ def main() -> None:
 
     # Workspace paths
     workspace_root = project_root
+    data_root = _resolve_workspace_path(args.data_root)
+    processed_root = (
+        _resolve_workspace_path(args.processed_root)
+        if args.processed_root
+        else os.path.join(data_root, "processed")
+    )
+    interim_root = (
+        _resolve_workspace_path(args.interim_root)
+        if args.interim_root
+        else os.path.join(data_root, "interim")
+    )
+    os.environ["ARGUS_DATA_ROOT"] = data_root
+    os.environ["ARGUS_PROCESSED_ROOT"] = processed_root
+    os.environ["ARGUS_INTERIM_ROOT"] = interim_root
+    print(f"[paths] data_root: {data_root}")
+    print(f"[paths] interim_root: {interim_root}")
+    print(f"[paths] processed_root: {processed_root}")
+
+    wiki_candidates: List[str] = []
+    if args.wikipedia_pages_path:
+        wiki_candidates.append(_resolve_workspace_path(args.wikipedia_pages_path))
+    wiki_candidates.extend(
+        [
+            os.path.join(processed_root, "wikipedia_all_relevant_results.jsonl"),
+            os.path.join(interim_root, "4_tags_wikipedia_first_paragraphs_cache.jsonl"),
+            os.path.join(processed_root, "7_all_wikipedia_pages.jsonl"),
+        ]
+    )
     WIKIPEDIA_PAGES_PATH = _resolve_first_existing_path(
         "wikipedia paragraph cache",
-        [
-            os.path.join(workspace_root, "data", "processed", "wikipedia_all_relevant_results.jsonl"),
-            os.path.join(workspace_root, "data", "interim", "4_tags_wikipedia_first_paragraphs_cache.jsonl"),
-            os.path.join(workspace_root, "data", "processed", "7_all_wikipedia_pages.jsonl"),
-        ],
+        wiki_candidates,
         required=True,
     )
 
     # Cache directory
-    cache_dir = os.path.join(workspace_root, "outputs", "cache", "embedding_cache", "embeddings")
+    cache_dir = (
+        _resolve_workspace_path(args.embedding_cache_dir)
+        if args.embedding_cache_dir
+        else os.path.join(workspace_root, "outputs", "cache", "embeddings")
+    )
     os.makedirs(cache_dir, exist_ok=True)
+    print(f"[paths] embedding_cache_dir: {cache_dir}")
 
     if args.use_mlp_configs:
         if args.retriever.lower()  in ["contriever", "cnt"]:
@@ -643,7 +719,9 @@ def main() -> None:
             retriever_value = "gritlm"
         else:
             raise RuntimeError(f"Unknown retriever: {args.retriever}")
-        model_configs_file = f"configs/training/analysis_rank_models/{retriever_value}.jsonl"
+        model_configs_file = os.path.join(
+            workspace_root, "configs", "training", "analysis_rank_models", f"{retriever_value}.jsonl"
+        )
         if not os.path.exists(model_configs_file):
             raise RuntimeError(f"Model configs file not found: {model_configs_file}")
         mlp_configs = []

@@ -1,38 +1,29 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-
-# ---------------------------
-# Config
-# ---------------------------
-
-# Root of the repo (this script lives in configs/training)
 THIS_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 WORKSPACE_ROOT="$( cd "${THIS_DIR}/../.." && pwd )"
+source "${WORKSPACE_ROOT}/configs/dataset/00_env.sh"
 
-export HF_BASE="../../../../data/proj/zeinabtaghavi"
-export HF_HOME="${HF_BASE}"
-export HF_HUB_CACHE="${HF_BASE}/hub"
-export HF_DATASETS_CACHE="${HF_BASE}/datasets"
-export CUDA_VISIBLE_DEVICES="7"
-
-# Set HF_TOKEN in your environment if needed for private models.
-export HUGGINGFACE_TOKEN="${HF_TOKEN:-}"
-export HF_AUTH_TOKEN="${HF_TOKEN:-}"
-
-export CUDA_VISIBLE_DEVICES="0"
-PYTHON=python
+PYTHON="${PYTHON:-python}"
 SCRIPT="${WORKSPACE_ROOT}/scripts/training/11_embedding_rank.py"
 
+# Hugging Face cache root used by training scripts.
+export ARGUS_HF_BASE="${ARGUS_HF_BASE:-../../../../data/proj/zeinabtaghavi}"
+export HF_BASE="${ARGUS_HF_BASE}"
+export HF_HOME="${HF_HOME:-${HF_BASE}}"
+export HF_HUB_CACHE="${HF_HUB_CACHE:-${HF_HOME}/hub}"
+export HF_DATASETS_CACHE="${HF_DATASETS_CACHE:-${HF_HOME}/datasets}"
+
+# Dedicated embedding cache directory (new unified folder).
+export ARGUS_EMBED_CACHE_ROOT="${ARGUS_EMBED_CACHE_ROOT:-${WORKSPACE_ROOT}/outputs/cache/embeddings}"
+export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"
+
 # Which embedding backends to use for the qid bank
-RETRIEVERS=("contriever")   # add "contriever" "reasonir" "qwen3" "jina" "bge-m3" "reason-embed" "nv-embed" "gritlm" if you like
+RETRIEVERS=("contriever")
 
 # Rank universe sizes
-ORDERS=(800)                # you can add e.g. 100 200
-
-# Number of CPU workers for the ranking step
-NUM_WORKERS=None
-
+ORDERS=(800)
 
 # Where to write per-worker shards (optional)
 SHARD_DIR="${WORKSPACE_ROOT}/outputs/8_rank_shards"
@@ -48,9 +39,13 @@ EMBED_BATCH_SIZE=32
 # ---------------------------
 
 echo "[INFO] Workspace root: ${WORKSPACE_ROOT}"
+echo "[INFO] Data root: ${ARGUS_DATA_ROOT}"
+echo "[INFO] Interim root: ${ARGUS_INTERIM_ROOT}"
+echo "[INFO] Processed root: ${ARGUS_PROCESSED_ROOT}"
+echo "[INFO] Embedding cache: ${ARGUS_EMBED_CACHE_ROOT}"
 echo "[INFO] Shard dir: ${SHARD_DIR}"
 
-mkdir -p "${SHARD_DIR}"
+mkdir -p "${SHARD_DIR}" "${ARGUS_EMBED_CACHE_ROOT}"
 
 for RET in "${RETRIEVERS[@]}"; do
   for O in "${ORDERS[@]}"; do
@@ -59,9 +54,13 @@ for RET in "${RETRIEVERS[@]}"; do
     echo "==============================================="
 
     CMD=( "${PYTHON}" "${SCRIPT}"
+          --data_root "${ARGUS_DATA_ROOT}"
+          --processed_root "${ARGUS_PROCESSED_ROOT}"
+          --interim_root "${ARGUS_INTERIM_ROOT}"
+          --embedding_cache_dir "${ARGUS_EMBED_CACHE_ROOT}"
+          --hf_base "${ARGUS_HF_BASE}"
           --retriever "${RET}"
           --o "${O}"
-        #   --num_workers "${NUM_WORKERS}"
           --shard_output_dir "${SHARD_DIR}"
           --embed_batch_size "${EMBED_BATCH_SIZE}" )
 
