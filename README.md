@@ -2,7 +2,7 @@
   <img src="Argus_Logo.png" width="140" alt="ARGUS logo" />
 </p>
 
-# With Argus Eyes
+# With Argus Eyes: Assessing Retrieval Gaps via Uncertainty Scoring to Detect and Remedy Retrieval Blind Spots
 
 > Official code + data + model releases for the **With Argus Eyes** paper.
 >
