@@ -1,5 +1,6 @@
 # utils/plots/risk_score/combined_plot.py
 from __future__ import annotations
+from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize
@@ -214,7 +215,11 @@ def plot_combined_lda_histogram(
         cbar.set_label("Score (0-1)", rotation=270, labelpad=16, fontweight="bold")
 
     if save_path:
-        fig.savefig(save_path, dpi=200)
+        # Make saving robust to missing parent directories
+        out_path = Path(save_path).expanduser()
+        if str(out_path.parent) not in ("", "."):
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(out_path, dpi=200)
     if show:
         plt.show()
     plt.close(fig)

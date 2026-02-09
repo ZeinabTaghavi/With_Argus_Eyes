@@ -152,8 +152,7 @@ def _resolve_workspace_path(path: str) -> str:
 def _resolve_rank_file_path(base_processed_root: str, order: str, retriever: str) -> str:
     """Resolve ranking file path; prefer stage-11 naming, fallback to legacy stage-8."""
     candidates = [
-        os.path.join(base_processed_root, "11_Emb_Rank", f"11_main_dataset_{order}_{retriever}.jsonl"),
-        os.path.join(base_processed_root, "8_Emb_Rank", f"8_main_dataset_{order}_{retriever}.jsonl"),
+        os.path.join(base_processed_root, "11_Emb_Rank", f"11_main_dataset_{order}_{retriever}.jsonl")
     ]
     for path in candidates:
         if os.path.exists(path):

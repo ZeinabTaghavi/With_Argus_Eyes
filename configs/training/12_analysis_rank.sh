@@ -29,15 +29,15 @@ echo "ARGUS_INTERIM_ROOT:  ${ARGUS_INTERIM_ROOT}"
 echo "ARGUS_PROCESSED_ROOT:${ARGUS_PROCESSED_ROOT}"
 echo "EMBED_CACHE_DIR:     ${ARGUS_EMBED_CACHE_ROOT}"
 
-RETRIEVERS=("nv-embed")
+RETRIEVERS=("contriever")
 ORDERS=(800)
-K=(10 20)
-OUT_DIR="outputs/9_risk_outputs"
+K=(50)
+OUT_DIR="outputs/12_risk_outputs"
 
 # Histogram sampling configuration
 HISTOGRAM_BINS=100
 HISTOGRAM_COUNT_THRESHOLD=50
-SAMPLE_BY_HISTOGRAM_BINS="true"
+SAMPLE_BY_HISTOGRAM_BINS="false"
 
 # Choose a sampling mode (equal, percentage, count, average)
 HISTOGRAM_SAMPLING_MODE="average"
@@ -47,7 +47,7 @@ USE_MLP_CONFIGS="true"
 TRAIN_MODE="true"
 SAVE_MODELS="true"
 # Set to "true" to plot the combined LDA+histogram; "false" to skip
-PLOT="false"
+PLOT="true"
 
 for k in "${K[@]}"; do
   for retriever in "${RETRIEVERS[@]}"; do
