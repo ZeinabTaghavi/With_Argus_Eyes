@@ -57,13 +57,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--unrelevant_tags",
         type=str,
-        default=os.path.join("data", "interim", "6_unrelevant_qids.jsonl"),
+        default=os.path.join("data", "interim", "8_unrelevant_qids.jsonl"),
         help="Unrelevant tags JSONL path from stage 08.",
     )
     parser.add_argument(
         "--output",
         type=str,
-        default=os.path.join("data", "interim", "6_wiki_unrelevants_results.jsonl"),
+        default=os.path.join("data", "interim", "9_wiki_unrelevants_results.jsonl"),
         help="Output JSONL path: one line {'qid','wiki_unrelevants'} per main item.",
     )
     parser.add_argument("--language", type=str, default="en", help="Wikipedia language code.")

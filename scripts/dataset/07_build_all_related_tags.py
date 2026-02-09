@@ -11,7 +11,7 @@ import os
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Build 6_all_relation_tags.json from a JSONL dataset.")
+    parser = argparse.ArgumentParser(description="Build 7_all_related_tags.json from a JSONL dataset.")
     parser.add_argument(
         "--input",
         type=str,

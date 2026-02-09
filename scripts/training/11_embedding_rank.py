@@ -592,13 +592,13 @@ def main():
     # Input paths
     # ---------------------------
     NON_RELATION_TAGS_PATH = os.path.join(
-        workspace_root, "data", "interim", "6_wiki_unrelevants_results.jsonl"
+        workspace_root, "data", "processed", "wiki_unrelevants_results.jsonl"
     )
     WIKIPEDIA_PAGES_PATH = os.path.join(
-        workspace_root, "data", "interim", "4_tags_wikipedia_first_paragraphs_cache.jsonl"
+        workspace_root, "data", "processed", "wikipedia_all_relevant_results.jsonl"
     )
     MAIN_DATASET_PATH = os.path.join(
-        workspace_root, "data", "interim", "6_main_dataset.jsonl"
+        workspace_root, "data", "processed", "main_dataset.jsonl"
     )
 
     # ---------------------------

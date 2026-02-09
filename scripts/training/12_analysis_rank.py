@@ -3,6 +3,7 @@
 from __future__ import annotations
 from typing import List, Dict, Callable, Tuple, Any
 import os, json, sys
+import re
 import numpy as np
 import random
 import argparse
@@ -84,6 +85,7 @@ if project_root not in sys.path:
 _WIKIPEDIA_TEXT_BY_QID: Dict[str, str] | None = None
 _RETRIEVER_CACHE: Dict[str, Any] = {}
 EMBED_BATCH_SIZE_DEFAULT = 64
+QID_PATTERN = re.compile(r"^Q[1-9]\d*$")
 
 
 
@@ -95,6 +97,7 @@ def _ensure_wikipedia_texts() -> Dict[str, str]:
 
     mapping: Dict[str, str] = {}
     total_rows = 0
+    skipped_rows = 0
     try:
         with open(WIKIPEDIA_PAGES_PATH, "r", encoding="utf-8") as fh:
             for raw in fh:
@@ -105,20 +108,37 @@ def _ensure_wikipedia_texts() -> Dict[str, str]:
 
                 record = json.loads(raw)
                 qid = record.get("qid")
-                paragraph = record["wikipedia_first_paragraph"]
-                if not qid or not paragraph:
-                    raise ValueError(f"No qid or paragraph found for record: {record}")
-                text = paragraph.strip()
-                if not text:
-                    raise ValueError(f"Empty wikipedia_first_paragraph for qid={qid}")
-                mapping[qid] = text
+                if not (isinstance(qid, str) and QID_PATTERN.match(qid)):
+                    tag = record.get("tag")
+                    if isinstance(tag, str) and QID_PATTERN.match(tag):
+                        qid = tag
+                    else:
+                        skipped_rows += 1
+                        continue
+
+                paragraph = (record.get("wikipedia_first_paragraph") or "").strip()
+                if not paragraph:
+                    skipped_rows += 1
+                    continue
+
+                prev = mapping.get(qid)
+                if prev is None or len(paragraph) > len(prev):
+                    mapping[qid] = paragraph
     except FileNotFoundError as exc:
         raise FileNotFoundError(
             f"Could not load wikipedia pages file: {WIKIPEDIA_PAGES_PATH}"
         ) from exc
 
+    if not mapping:
+        raise RuntimeError(
+            f"No qid-linked wikipedia paragraphs were found in {WIKIPEDIA_PAGES_PATH}"
+        )
+
     _WIKIPEDIA_TEXT_BY_QID = mapping
-    print(f"[wikipedia] Loaded {len(mapping)} qids (processed {total_rows} rows) -> {WIKIPEDIA_PAGES_PATH}")
+    print(
+        f"[wikipedia] Loaded {len(mapping)} qids (processed {total_rows} rows, skipped {skipped_rows}) "
+        f"-> {WIKIPEDIA_PAGES_PATH}"
+    )
     return mapping
 
 
@@ -359,7 +379,7 @@ def run_risk_pipeline(
         #   {workspace_root}/data/processed/8_Emb_Rank/8_main_dataset_{order}_{retriever}.jsonl
         from pathlib import Path
         script_dir = Path(__file__).resolve().parent
-        workspace_root_local = script_dir.parents[2]  # go up from scripts/training to workspace root
+        workspace_root_local = script_dir.parents[1]  # workspace root
         file_path = str(
             workspace_root_local
             / "data"
@@ -570,7 +590,7 @@ def main() -> None:
     # Workspace paths
     workspace_root = project_root
     WIKIPEDIA_PAGES_PATH = os.path.join(
-        workspace_root, "data", "interim", "6_all_wikipedia_pages.jsonl"
+        workspace_root, "data", "processed", "wikipedia_all_relevant_results.jsonl"
     )
 
     # Cache directory

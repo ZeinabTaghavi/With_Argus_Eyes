@@ -16,7 +16,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--all_relation_tags",
         type=str,
-        default="./data/interim/6_all_relation_tags.json",
+        default="./data/interim/7_all_related_tags.json",
         help="Input JSON mapping qid -> {qid,label,related_tags:[{qid,label},...]} (output of stage 07).",
     )
     parser.add_argument(
@@ -274,8 +274,8 @@ if __name__ == "__main__":
 '''
 python scripts/dataset/08_add_unrelevants.py \
   --order 5000 \
-  --all_relation_tags ./data/interim/7_all_relation_tags.json \
+  --all_relation_tags ./data/interim/7_all_related_tags.json \
   --main_dataset ./data/interim/6_main_dataset.jsonl \
-  --out ./data/interim/6_unrelevant_qids.jsonl \
+  --out ./data/interim/8_unrelevant_qids.jsonl \
 
 '''

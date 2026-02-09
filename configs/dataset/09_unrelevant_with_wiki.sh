@@ -8,7 +8,6 @@ source "${THIS_DIR}/00_env.sh"
 PYTHON=${PYTHON:-python}
 
 "${PYTHON}" "${WORKSPACE_ROOT}/scripts/dataset/09_unrelevant_with_wiki.py" \
-  --main_dataset "${ARGUS_INTERIM_ROOT}/6_main_dataset.jsonl" \
-  --wikipedia_pages "${ARGUS_INTERIM_ROOT}/6_all_wikipedia_pages.jsonl" \
+  --wikipedia_pages "${ARGUS_INTERIM_ROOT}/4_tags_wikipedia_first_paragraphs_cache.jsonl" \
   --unrelevant_tags "${ARGUS_INTERIM_ROOT}/8_unrelevant_qids.jsonl" \
   --output "${ARGUS_INTERIM_ROOT}/9_wiki_unrelevants_results.jsonl"

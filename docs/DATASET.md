@@ -30,19 +30,27 @@ Runnable configs are provided in `configs/dataset/`:
 
 6) **Final cleaning + dataset export**
     - Script: `scripts/dataset/06_final_cleaning.py`
-    - Outputs: `data/interim/6_*` and final processed outputs under `data/processed/` (see `data/processed/8_Emb_Rank/`)
+    - Outputs: `data/interim/6_all_wikipedia_pages.jsonl`, `data/interim/6_main_dataset.jsonl`
 
-7) **Build all relation tags**
-   - Script: `scripts/dataset/07_build_all_relation_tags.py`
-   - Output: `data/interim/6_all_relation_tags.json`
+7) **Build all related tags map**
+   - Script: `scripts/dataset/07_build_all_related_tags.py`
+   - Output: `data/interim/7_all_related_tags.json`
 
 8) **Add irrelevant tags**
    - Script: `scripts/dataset/08_add_unrelevants.py`
-   - Output: `data/interim/6_unrelevant_qids.jsonl`
+   - Output: `data/interim/8_unrelevant_qids.jsonl`
 
 9) **Filter irrelevant tags with Wikipedia**
     - Script: `scripts/dataset/09_unrelevant_with_wiki.py`
-    - Output: `data/interim/6_wiki_unrelevants_results.jsonl`
+    - Output: `data/interim/9_wiki_unrelevants_results.jsonl`
+
+10) **Finalize processed files + optional interim cleanup**
+    - Script: `scripts/dataset/10_clear_directories.py`
+    - Moves these files into `data/processed/` with canonical names:
+    - `data/processed/main_dataset.jsonl`
+    - `data/processed/wikipedia_all_relevant_results.jsonl`
+    - `data/processed/wiki_unrelevants_results.jsonl`
+    - Optional mode: `--clear_interim` removes remaining temporary files/folders in `data/interim/`.
 
 ## Notes
 - Individual scripts have CLI arguments for overriding paths. Use `--help` to view options.
