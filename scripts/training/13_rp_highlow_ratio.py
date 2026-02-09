@@ -118,73 +118,6 @@ def compute_high_low_ratio_for_combo(
     return ratio
 
 
-# --- New helper: collect per-item (related_tag_count, RP score) for correlation ---
-def collect_related_counts_and_scores_for_combo(
-    processed_root: str,
-    retriever: str,
-    order: str,
-    k: int,
-) -> tuple[np.ndarray | None, np.ndarray | None]:
-    """
-    For a given (retriever, order), load the JSONL produced by stage 11 and
-    return two arrays:
-
-        related_counts[i] = number of related tags for item i
-        scores[i]         = RP risk score for item i
-
-    This is used to study the correlation between the number of related
-    tags per item and the retrieval-quality score.
-
-    NOTE: This function assumes that each item dictionary contains one of
-    the keys 'related_tags', 'related', or 'positives' that stores the
-    list of related tags. Adapt the key selection if your schema differs.
-    """
-    file_path = _resolve_rank_file_path(processed_root, retriever, order)
-
-    if not os.path.exists(file_path):
-        print(f"[warn] (corr) file not found for retriever={retriever}, order={order}: {file_path}")
-        return None, None
-
-    items = load_rank_file(
-        retriever=retriever,
-        using_file_path=True,
-        file_path=file_path,
-    )
-    if not items:
-        print(f"[warn] (corr) no items loaded for retriever={retriever}, order={order}")
-        return None, None
-
-    risk_name = "ratio_unrelevant_below_k"
-    risk_fn = get_risk_fn(risk_name)
-
-    related_counts: List[int] = []
-    scores: List[float] = []
-
-    for it in items:
-        # Heuristic: infer number of related tags from common keys.
-        if "related_tags" in it:
-            n_rel = len(it["related_tags"])
-        elif "related" in it:
-            n_rel = len(it["related"])
-        elif "positives" in it:
-            n_rel = len(it["positives"])
-        else:
-            # If no known key is present, skip this item.
-            continue
-
-        score = risk_fn(it, order=order, k=k)
-        related_counts.append(int(n_rel))
-        scores.append(float(score))
-
-    if not related_counts:
-        print(f"[warn] (corr) no usable items for retriever={retriever}, order={order}")
-        return None, None
-
-    rc_arr = np.asarray(related_counts, dtype=int)
-    sc_arr = np.asarray(scores, dtype=float)
-    return rc_arr, sc_arr
-
-
 def main():
     parser = argparse.ArgumentParser(
         description=(
@@ -309,43 +242,6 @@ def main():
             if ratio is not None:
                 ratios[retriever][order] = ratio
 
-    # --- Collect per-item (related_count, score) for correlation analysis ---
-    related_counts_by_retriever: Dict[str, List[int]] = {r: [] for r in retrievers}
-    scores_by_retriever: Dict[str, List[float]] = {r: [] for r in retrievers}
-
-    for retriever in retrievers:
-        for order in orders:
-            rc_arr, sc_arr = collect_related_counts_and_scores_for_combo(
-                processed_root=processed_root,
-                retriever=retriever,
-                order=order,
-                k=args.k,
-            )
-            if rc_arr is None or sc_arr is None:
-                continue
-            related_counts_by_retriever[retriever].extend(rc_arr.tolist())
-            scores_by_retriever[retriever].extend(sc_arr.tolist())
-
-    # Compute Pearson correlation between number of related tags and score per retriever
-    correlations: Dict[str, float] = {}
-    for retriever in retrievers:
-        rc_list = related_counts_by_retriever[retriever]
-        sc_list = scores_by_retriever[retriever]
-        if len(rc_list) < 2:
-            correlations[retriever] = float("nan")
-            continue
-        rc_arr = np.asarray(rc_list, dtype=float)
-        sc_arr = np.asarray(sc_list, dtype=float)
-        if np.std(rc_arr) == 0.0 or np.std(sc_arr) == 0.0:
-            correlations[retriever] = float("nan")
-            continue
-        corr = float(np.corrcoef(rc_arr, sc_arr)[0, 1])
-        correlations[retriever] = corr
-        print(
-            f"[corr] retriever={retriever:12s} → "
-            f"pearson_corr(#related_tags, RP-score) = {corr:.4f}"
-        )
-
     # Plot
     # Make the plot shorter (75% of previous height)
     fig, ax = plt.subplots(figsize=(8, 6))
@@ -451,82 +347,6 @@ def main():
     fig.tight_layout()
     fig.savefig(out_path, dpi=200)
     print(f"[plot] saved to: {out_path}")
-
-    # --- New plot: per-retriever scatter of RP-score vs #related tags ---
-    # We create a 2x4 grid of subplots (up to 8 retrievers).
-    n_panels = min(len(retrievers), 8)
-    if n_panels > 0:
-        # Compute a global max for y-axis to keep scales comparable
-        global_max_rc = 0
-        for r in retrievers:
-            rc_list = related_counts_by_retriever[r]
-            if rc_list:
-                local_max = max(rc_list)
-                if local_max > global_max_rc:
-                    global_max_rc = local_max
-        if global_max_rc <= 0:
-            global_max_rc = 1
-
-        fig_scatter, axes = plt.subplots(2, 4, figsize=(16, 9), sharex=True, sharey=True)
-        axes = axes.flatten()
-
-        for idx in range(8):
-            ax_sc = axes[idx]
-            if idx >= n_panels:
-                # Hide unused subplot
-                ax_sc.axis("off")
-                continue
-
-            retriever = retrievers[idx]
-            rc_list = related_counts_by_retriever[retriever]
-            sc_list = scores_by_retriever[retriever]
-
-            # If no data for this retriever, mark as such
-            if len(rc_list) == 0 or len(sc_list) == 0:
-                ax_sc.set_title(retriever_labels.get(retriever, retriever), fontsize=12)
-                ax_sc.text(0.5, 0.5, "no data", ha="center", va="center", fontsize=11)
-                ax_sc.set_xlim(0, 1)
-                # For log scale, can't set ylim to 0; use 0.8 as small positive value if global_max_rc > 0
-                ymin = 0.8 if global_max_rc > 0 else 1
-                ax_sc.set_ylim(ymin, global_max_rc * 1.05)
-                ax_sc.set_yscale('log')
-                continue
-
-            rc_arr = np.asarray(rc_list, dtype=float)
-            sc_arr = np.asarray(sc_list, dtype=float)
-
-            # Ensure no zero in rc_arr for log-scale plotting
-            rc_arr_safe = np.where(rc_arr <= 0, 0.8, rc_arr)
-
-            ax_sc.scatter(sc_arr, rc_arr_safe, s=5, alpha=0.5)
-            ax_sc.set_title(retriever_labels.get(retriever, retriever), fontsize=12)
-
-            # X-axis: RP-score, Y-axis: number of related tags (logarithmic)
-            ax_sc.set_xlim(0, 1)
-            ymin = min(rc_arr_safe.min(), 0.8)
-            ymin = 0.8 if ymin <= 0 else ymin
-            ax_sc.set_ylim(ymin, global_max_rc * 1.05)
-            ax_sc.set_yscale('log')
-
-            # Only show x-labels on the bottom row and y-labels on the leftmost column
-            row = idx // 4
-            col = idx % 4
-            if row == 1:
-                ax_sc.set_xlabel("RP-score")
-            if col == 0:
-                ax_sc.set_ylabel("Number of related tags (log)")
-
-        fig_scatter.tight_layout()
-        scatter_out_path = os.path.join(
-            args.out_dir,
-            "rp_score_vs_related_tags_per_retriever.png",
-        )
-        os.makedirs(os.path.dirname(scatter_out_path) or ".", exist_ok=True)
-        fig_scatter.savefig(scatter_out_path, dpi=200)
-        print(f"[plot] saved scatter distribution plot to: {scatter_out_path}")
-        plt.close(fig_scatter)
-    else:
-        print("[plot] no retrievers to plot scatter distributions.")
 
 
 if __name__ == "__main__":
