@@ -16,7 +16,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--all_relation_tags",
         type=str,
-        default="./data/interim/7_all_relation_tags.json",
+        default="./data/interim/6_all_relation_tags.json",
         help="Input JSON mapping qid -> {qid,label,related_tags:[{qid,label},...]} (output of stage 07).",
     )
     parser.add_argument(
@@ -99,15 +99,26 @@ def return_unrelevant_tags_to_jsonl(
     """
     _ensure_parent_dir(out_jsonl)
 
-    # Collect unique 'relevant' qids appearing in main dataset
+    # Collect unique target qids from main dataset items.
+    # This is the expected behavior for generating one unrelevant list per item qid.
     relevant_qids = []
     seen = set()
     for item in tqdm(main_dataset_items, total=len(main_dataset_items), desc="Collecting relevant qids"):
-        for tag in item.get('related_tags', []):
-            q = tag.get('qid')
-            if q is not None and q in all_qid_related_tags and q not in seen:
-                seen.add(q)
-                relevant_qids.append(q)
+        q = item.get("qid") or item.get("Q_number") or item.get("QID")
+        if q is not None and q in all_qid_related_tags and q not in seen:
+            seen.add(q)
+            relevant_qids.append(q)
+
+    # Backward-compatible fallback for legacy schemas where item qid is missing.
+    if not relevant_qids:
+        for item in tqdm(main_dataset_items, total=len(main_dataset_items), desc="Fallback: collecting qids from tags"):
+            for tag in item.get('related_tags', []):
+                if not isinstance(tag, dict):
+                    continue
+                q = tag.get('qid')
+                if q is not None and q in all_qid_related_tags and q not in seen:
+                    seen.add(q)
+                    relevant_qids.append(q)
 
     if not relevant_qids:
         # touch empty file for consistency
@@ -208,6 +219,7 @@ def main() -> None:
     all_qids_set = set()
     all_qid_related_tags = {}
     for qid, rec in tqdm(all_relation_tags.items(), total=len(all_relation_tags), desc="Gathering all qids"):
+        all_qids_set.add(qid)
         tags_qids = [t.get("qid") for t in (rec.get("related_tags") or []) if isinstance(t, dict) and t.get("qid")]
         all_qid_related_tags[qid] = set(tags_qids)
         all_qids_set.update(tags_qids)
