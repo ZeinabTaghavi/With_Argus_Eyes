@@ -5,6 +5,7 @@ import sys
 import json
 import random
 import argparse
+import re
 from typing import List, Dict, Tuple, Any
 import numpy as np
 from tqdm import tqdm
@@ -82,6 +83,7 @@ cache_dir: str = ""
 # Helpers
 # ---------------------------
 WIKI_FILTER_KEYWORDS = ("wikipedia", "wikidata")
+QID_PATTERN = re.compile(r"^Q[1-9]\d*$")
 
 
 def chunkify(lst: List[Any], n_chunks: int) -> List[Tuple[int, int]]:
@@ -146,6 +148,145 @@ def parse_gpu_ids() -> List[str]:
         return [g.strip() for g in args.gpus.split(",") if g.strip() != ""]
     env = os.environ.get("CUDA_VISIBLE_DEVICES", "0")
     return [g.strip() for g in env.split(",") if g.strip() != ""]
+
+
+def _filter_non_relation_map_by_wiki(
+    non_rel_map: Dict[str, List[str]],
+    wiki_qids: set[str],
+) -> Dict[str, List[str]]:
+    """Keep only keys/candidates that have available wikipedia paragraphs."""
+    filtered: Dict[str, List[str]] = {}
+    for rel_qid, unrels in non_rel_map.items():
+        if rel_qid not in wiki_qids:
+            continue
+        if not isinstance(unrels, list):
+            continue
+        kept = [q for q in unrels if isinstance(q, str) and q in wiki_qids]
+        if kept:
+            filtered[rel_qid] = kept
+    return filtered
+
+
+def _filter_items_by_wiki_coverage(
+    items: List[dict],
+    wiki_qids: set[str],
+    non_rel_map: Dict[str, List[str]],
+) -> Tuple[List[dict], Dict[str, int]]:
+    """Filter items to those fully usable for ranking with current wiki coverage."""
+    kept: List[dict] = []
+    dropped_missing_item_qid = 0
+    dropped_no_usable_related = 0
+    related_tags_removed = 0
+
+    for item in items:
+        item_qid = item.get("qid")
+        if not isinstance(item_qid, str) or item_qid not in wiki_qids:
+            dropped_missing_item_qid += 1
+            continue
+
+        raw_related = item.get("related_tags")
+        if not isinstance(raw_related, list):
+            dropped_no_usable_related += 1
+            continue
+
+        usable_related: List[dict] = []
+        for tag in raw_related:
+            if not isinstance(tag, dict):
+                related_tags_removed += 1
+                continue
+            rel_qid = tag.get("qid")
+            if not isinstance(rel_qid, str):
+                related_tags_removed += 1
+                continue
+            if rel_qid not in wiki_qids:
+                related_tags_removed += 1
+                continue
+            if rel_qid not in non_rel_map:
+                related_tags_removed += 1
+                continue
+            usable_related.append(tag)
+
+        if not usable_related:
+            dropped_no_usable_related += 1
+            continue
+
+        item_copy = dict(item)
+        item_copy["related_tags"] = usable_related
+        kept.append(item_copy)
+
+    stats = {
+        "dropped_missing_item_qid": dropped_missing_item_qid,
+        "dropped_no_usable_related": dropped_no_usable_related,
+        "related_tags_removed": related_tags_removed,
+    }
+    return kept, stats
+
+
+def _extract_qid_from_wiki_row(row: Dict[str, Any]) -> str | None:
+    """Extract qid from mixed wiki-cache schemas.
+
+    Supported rows:
+    - {"qid":"Q123", ...}
+    - {"tag":"Q123", ...}
+    """
+    qid = row.get("qid")
+    if isinstance(qid, str) and QID_PATTERN.match(qid):
+        return qid
+    tag = row.get("tag")
+    if isinstance(tag, str) and QID_PATTERN.match(tag):
+        return tag
+    return None
+
+
+def _load_wikipedia_qid_map(path: str) -> Dict[str, Dict[str, Any]]:
+    """Load a paragraph map keyed by qid from a JSONL cache file.
+
+    Ignores rows without a resolvable qid or without a non-empty paragraph.
+    """
+    qid_map: Dict[str, Dict[str, Any]] = {}
+    total_rows = 0
+    skipped_rows = 0
+
+    if not os.path.exists(path):
+        print(f"[warn] wikipedia cache file not found: {path}")
+        return qid_map
+
+    with open(path, "r", encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            total_rows += 1
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                skipped_rows += 1
+                continue
+
+            if not isinstance(row, dict):
+                skipped_rows += 1
+                continue
+
+            qid = _extract_qid_from_wiki_row(row)
+            para = (row.get("wikipedia_first_paragraph") or "").strip()
+            if not qid or not para:
+                skipped_rows += 1
+                continue
+
+            title = row.get("label") or row.get("wikipedia_title") or row.get("tag") or qid
+            prev = qid_map.get(qid)
+            # Keep the longer paragraph if the qid appears multiple times.
+            if prev is None or len(para) > len(prev.get("wikipedia_first_paragraph", "")):
+                qid_map[qid] = {
+                    "qid": qid,
+                    "label": title,
+                    "wikipedia_first_paragraph": para,
+                }
+    print(
+        f"Loaded wikipedia qid map from {path}: "
+        f"total_rows={total_rows}, usable_qid_rows={len(qid_map)}, skipped_rows={skipped_rows}"
+    )
+    return qid_map
 
 
 # ---------------------------
@@ -454,7 +595,7 @@ def main():
         workspace_root, "data", "interim", "6_wiki_unrelevants_results.jsonl"
     )
     WIKIPEDIA_PAGES_PATH = os.path.join(
-        workspace_root, "data", "interim", "6_all_wikipedia_pages.jsonl"
+        workspace_root, "data", "interim", "4_tags_wikipedia_first_paragraphs_cache.jsonl"
     )
     MAIN_DATASET_PATH = os.path.join(
         workspace_root, "data", "interim", "6_main_dataset.jsonl"
@@ -479,23 +620,12 @@ def main():
     else:
         print(f"[warn] non relation tags file not found: {NON_RELATION_TAGS_PATH}")
 
-    wikipedia_pages: List[Dict] = []
-    if os.path.exists(WIKIPEDIA_PAGES_PATH):
-        with open(WIKIPEDIA_PAGES_PATH, "r", encoding="utf-8") as fh:
-            for line in fh:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    wikipedia_pages.append(json.loads(line))
-                except json.JSONDecodeError:
-                    continue
-        print(f"Loaded {len(wikipedia_pages)} wikipedia rows -> {WIKIPEDIA_PAGES_PATH}")
-    else:
-        print(f"[warn] wikipedia pages file not found: {WIKIPEDIA_PAGES_PATH}")
-
-    wikipedia_pages_dict = {page['qid']: page for page in wikipedia_pages}
-    del wikipedia_pages
+    wikipedia_pages_dict = _load_wikipedia_qid_map(WIKIPEDIA_PAGES_PATH)
+    if not wikipedia_pages_dict:
+        print(
+            f"[warn] No qid-linked wikipedia paragraphs were loaded from {WIKIPEDIA_PAGES_PATH}. "
+            "Embedding ranks will fail if required qids are missing."
+        )
 
     main_items = []
     if os.path.exists(MAIN_DATASET_PATH):
@@ -516,6 +646,25 @@ def main():
     print(
         f"Removed {_removed_tags} related_tag(s) containing 'Wikipedia'/'Wikidata' across {_cleaned_items} item(s)."
     )
+
+    wiki_qids = set(wikipedia_pages_dict.keys())
+    non_relation_tag_data = _filter_non_relation_map_by_wiki(non_relation_tag_data, wiki_qids)
+    print(f"Filtered non relation tag map to {len(non_relation_tag_data)} rel_qids with wiki coverage.")
+
+    main_items, coverage_stats = _filter_items_by_wiki_coverage(main_items, wiki_qids, non_relation_tag_data)
+    print(
+        "Filtered main items by wiki coverage: "
+        f"kept={len(main_items)}, "
+        f"dropped_missing_item_qid={coverage_stats['dropped_missing_item_qid']}, "
+        f"dropped_no_usable_related={coverage_stats['dropped_no_usable_related']}, "
+        f"related_tags_removed={coverage_stats['related_tags_removed']}"
+    )
+
+    if not main_items:
+        raise ValueError(
+            "No training items remain after wiki coverage filtering. "
+            "Ensure the wikipedia cache contains qid-linked rows."
+        )
 
     cache_dir = os.path.join(workspace_root, "outputs", "cache", "embedding_cache", "embeddings")
     os.makedirs(cache_dir, exist_ok=True)
