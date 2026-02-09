@@ -26,7 +26,7 @@ RETRIEVERS=("contriever")
 ORDERS=(800)
 
 # Where to write per-worker shards (optional)
-SHARD_DIR="${WORKSPACE_ROOT}/outputs/8_rank_shards"
+SHARD_DIR="${WORKSPACE_ROOT}/outputs/11_embedding_rank_shards"
 
 # Optional flat YAML config (can be empty)
 CONFIG_PATH=""
