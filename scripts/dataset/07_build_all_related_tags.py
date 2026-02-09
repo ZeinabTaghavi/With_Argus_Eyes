@@ -21,7 +21,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output",
         type=str,
-        default="./data/interim/6_all_relation_tags.json",
+        default="./data/interim/7_all_related_tags.json",
         help="Output JSON path for qid->related_tags mapping.",
     )
     return parser.parse_args()

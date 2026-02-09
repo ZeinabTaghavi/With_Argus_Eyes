@@ -7,6 +7,6 @@ source "${THIS_DIR}/00_env.sh"
 
 PYTHON=${PYTHON:-python}
 
-"${PYTHON}" "${WORKSPACE_ROOT}/scripts/dataset/07_build_all_relation_tags.py" \
+"${PYTHON}" "${WORKSPACE_ROOT}/scripts/dataset/07_build_all_related_tags.py" \
   --input "${ARGUS_INTERIM_ROOT}/6_main_dataset.jsonl" \
-  --output "${ARGUS_INTERIM_ROOT}/7_all_relation_tags.json"
+  --output "${ARGUS_INTERIM_ROOT}/7_all_related_tags.json"
