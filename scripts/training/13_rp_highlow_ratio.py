@@ -222,7 +222,7 @@ def main():
     parser.add_argument(
         "--out_dir",
         type=str,
-        default="outputs/10_RP_HighLow_Ratio",
+        default="outputs/13_RP_HighLow_Ratio",
         help="Directory where the plot will be saved.",
     )
     parser.add_argument(
@@ -253,6 +253,8 @@ def main():
 
     os.makedirs(args.out_dir, exist_ok=True)
     out_path = os.path.join(args.out_dir, args.save_name)
+    # In case save_name contains subdirectories, ensure parent exists.
+    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
 
     # Dictionary mapping retrievers to display labels
     # You can modify this dictionary to customize the labels shown in the figure
@@ -519,6 +521,7 @@ def main():
             args.out_dir,
             "rp_score_vs_related_tags_per_retriever.png",
         )
+        os.makedirs(os.path.dirname(scatter_out_path) or ".", exist_ok=True)
         fig_scatter.savefig(scatter_out_path, dpi=200)
         print(f"[plot] saved scatter distribution plot to: {scatter_out_path}")
         plt.close(fig_scatter)

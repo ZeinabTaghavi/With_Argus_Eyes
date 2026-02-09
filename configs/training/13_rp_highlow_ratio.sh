@@ -10,8 +10,8 @@ SCRIPT="${WORKSPACE_ROOT}/scripts/training/13_rp_highlow_ratio.py"
 export PYTHONPATH="${WORKSPACE_ROOT}/src:${PYTHONPATH:-}"
 
 # Figure outputs
-OUT_DIR="${WORKSPACE_ROOT}/outputs/10_RP_HighLow_Ratio"
-SAVE_NAME="3_rp_high_low_ratio_by_order.png"
+OUT_DIR="${WORKSPACE_ROOT}/outputs/13_RP_HighLow_Ratio"
+SAVE_NAME="13_rp_high_low_ratio_by_order.png"
 
 # Defaults used in the paper workflow
 RETRIEVERS="${RETRIEVERS:-contriever,reasonir,qwen3,jina,bge-m3,reason-embed,nv-embed,gritlm}"

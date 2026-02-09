@@ -499,6 +499,8 @@ def run_risk_pipeline(
     # )
     if plot:
         print("[run_risk_pipeline] plotting combined lda and histogram")
+        # Ensure plot directory exists for nested save paths.
+        os.makedirs(os.path.join(out_dir, "plots", "lda_histogram"), exist_ok=True)
         plot_combined_lda_histogram(
             X, y,
             bins_for_lda=bins_for_lda,
@@ -608,10 +610,12 @@ def run_risk_pipeline(
 
     if train_mode:
         print("[run_risk_pipeline] Training regression model...")
+        results_dir = os.path.join(out_dir, tag)
+        os.makedirs(results_dir, exist_ok=True)
         evaluate_regression_models(
             X,
             y,
-            results_dir=out_dir+f'/{tag}',
+            results_dir=results_dir,
             mlp_configs=mlp_configs,
             tag=tag,
             save_models=save_models,
