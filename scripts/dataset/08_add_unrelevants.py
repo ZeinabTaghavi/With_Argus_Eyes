@@ -11,7 +11,7 @@ from typing import Any
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Add irrelevant tags to the dataset.")
     parser.add_argument("--order", type=int, default=800, help="Number of unrelevant tags to sample per qid.")
-    parser.add_argument("--out", type=str, default='./data/interim/6_unrelevant_qids.jsonl', help="Output JSONL path.")
+    parser.add_argument("--out", type=str, default='./data/interim/8_unrelevant_qids.jsonl', help="Output JSONL path.")
     parser.add_argument("--workers", type=int, default=os.cpu_count(), help="Number of worker processes.")
     parser.add_argument(
         "--all_relation_tags",
