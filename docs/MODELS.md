@@ -13,15 +13,10 @@ bash configs/training/11_embedding_rank.sh
 ```
 
 ## Training and analysis scripts
-Common scripts include:
+Current scripts:
 - `scripts/training/11_embedding_rank.py`
 - `scripts/training/12_analysis_rank.py`
 - `scripts/training/13_rp_highlow_ratio.py`
-- `scripts/training/13b_rp_highlow_ratio.py`
-- `scripts/training/13c_avg_scores.py`
-- `scripts/training/14_retrieval_bias_analysis.py`
-- `scripts/training/15_retrieval_bias_polar.py`
-- `scripts/training/16_score_label_context_pairs.py`
 
 Run `--help` on any script for CLI options:
 ```bash

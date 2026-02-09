@@ -13,11 +13,6 @@ Update the figure numbers below to match the paper. The script names are stable 
 | Fig. X | `scripts/training/11_embedding_rank.py` | `configs/training/11_embedding_rank.sh` | `outputs/` (embedding rank plots) |
 | Fig. X | `scripts/training/12_analysis_rank.py` | `configs/training/12_analysis_rank.sh` | `outputs/` (summary analysis) |
 | Fig. X | `scripts/training/13_rp_highlow_ratio.py` | `configs/training/13_rp_highlow_ratio.sh` | `outputs/` (ratio plots) |
-| Fig. X | `scripts/training/13b_rp_highlow_ratio.py` | `configs/training/13b_rp_highlow_ratio.sh` | `outputs/` (ratio plots, variant) |
-| Fig. X | `scripts/training/13c_avg_scores.py` | `configs/training/13c_avg_scores.sh` | `outputs/` (avg score plots) |
-| Fig. X | `scripts/training/14_retrieval_bias_analysis.py` | `configs/training/14_retrieval_bias_analysis.sh` | `outputs/` (bias analysis) |
-| Fig. X | `scripts/training/15_retrieval_bias_polar.py` | `configs/training/15_retrieval_bias_polar.sh` | `outputs/` (polar plots) |
-| Fig. X | `scripts/training/16_score_label_context_pairs.py` | `configs/training/16_score_label_context_pairs.sh` | `outputs/` (pair scoring plots) |
 
 ## Notes
 - Most scripts print their output paths during execution. Capture logs for reproducibility.
