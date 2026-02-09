@@ -38,6 +38,8 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
 
+    written_files: list[str] = []
+
     unrelevant_tags = []
     with open(args.unrelevant_tags, "r", encoding="utf-8") as f:
         for line in tqdm(f, desc="Loading unrelevant tags"):
@@ -85,6 +87,60 @@ def main() -> None:
             f.write(json.dumps(item, ensure_ascii=False) + '\n')
 
     print(f"Saved results as JSONL to {args.output}")
+    if os.path.exists(args.output):
+        written_files.append(args.output)
+
+    # ---------------------------------------------
+    # Output summary (what was stored and where)
+    # ---------------------------------------------
+
+    def _human_size(num_bytes: int) -> str:
+        if num_bytes < 1024:
+            return f"{num_bytes} B"
+        if num_bytes < 1024**2:
+            return f"{num_bytes / 1024:.2f} KB"
+        if num_bytes < 1024**3:
+            return f"{num_bytes / (1024**2):.2f} MB"
+        return f"{num_bytes / (1024**3):.2f} GB"
+
+    def _jsonl_preview(path: str) -> str:
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                for line in handle:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    obj = json.loads(line)
+                    if isinstance(obj, dict):
+                        keys = sorted(obj.keys())
+                        return f"first_record_keys={keys}"
+                    return f"first_record_type={type(obj).__name__}"
+        except Exception as exc:
+            return f"preview_error={type(exc).__name__}"
+        return "empty_file"
+
+    # de-dupe while preserving order
+    uniq_written: list[str] = []
+    seen = set()
+    for p in written_files:
+        if p in seen:
+            continue
+        seen.add(p)
+        uniq_written.append(p)
+
+    print("\n[9_UNRELEVANT_WITH_WIKI] Output summary")
+    if not uniq_written:
+        print("No output files recorded.")
+    else:
+        print(f"Recorded {len(uniq_written)} output file(s):")
+        for p in uniq_written:
+            abs_p = os.path.abspath(p)
+            if not os.path.exists(p):
+                print(f" - {abs_p} (missing)")
+                continue
+            size = _human_size(os.path.getsize(p))
+            preview = _jsonl_preview(p)
+            print(f" - {abs_p} ({size}) {preview}")
 
 
 if __name__ == "__main__":
