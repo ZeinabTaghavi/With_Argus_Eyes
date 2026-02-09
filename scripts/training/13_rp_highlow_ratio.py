@@ -8,6 +8,14 @@ import sys
 import argparse
 from typing import Dict, List
 
+# Add project and src roots before local package imports.
+script_dir = os.path.dirname(os.path.abspath(__file__))
+workspace_root = os.path.abspath(os.path.join(script_dir, "..", ".."))
+src_root = os.path.join(workspace_root, "src")
+for path in (workspace_root, src_root):
+    if path not in sys.path:
+        sys.path.insert(0, path)
+
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
@@ -17,20 +25,16 @@ from with_argus_eyes.training.helpers import load_rank_file
 from with_argus_eyes.utils.risk.scores import get_risk_fn, normalized_score
 
 
-def _resolve_rank_file_path(workspace_root: str, retriever: str, order: str) -> str:
+def _resolve_rank_file_path(processed_root: str, retriever: str, order: str) -> str:
     """Prefer stage-11 output path and fallback to legacy stage-8 path."""
     candidates = [
         os.path.join(
-            workspace_root,
-            "data",
-            "processed",
+            processed_root,
             "11_Emb_Rank",
             f"11_main_dataset_{order}_{retriever}.jsonl",
         ),
         os.path.join(
-            workspace_root,
-            "data",
-            "processed",
+            processed_root,
             "8_Emb_Rank",
             f"8_main_dataset_{order}_{retriever}.jsonl",
         ),
@@ -42,7 +46,7 @@ def _resolve_rank_file_path(workspace_root: str, retriever: str, order: str) -> 
 
 
 def compute_high_low_ratio_for_combo(
-    workspace_root: str,
+    processed_root: str,
     retriever: str,
     order: str,
     k: int,
@@ -58,7 +62,7 @@ def compute_high_low_ratio_for_combo(
 
     Returns None if the file is missing or no items are found.
     """
-    file_path = _resolve_rank_file_path(workspace_root, retriever, order)
+    file_path = _resolve_rank_file_path(processed_root, retriever, order)
 
     if not os.path.exists(file_path):
         print(f"[warn] file not found for retriever={retriever}, order={order}: {file_path}")
@@ -116,7 +120,7 @@ def compute_high_low_ratio_for_combo(
 
 # --- New helper: collect per-item (related_tag_count, RP score) for correlation ---
 def collect_related_counts_and_scores_for_combo(
-    workspace_root: str,
+    processed_root: str,
     retriever: str,
     order: str,
     k: int,
@@ -135,7 +139,7 @@ def collect_related_counts_and_scores_for_combo(
     the keys 'related_tags', 'related', or 'positives' that stores the
     list of related tags. Adapt the key selection if your schema differs.
     """
-    file_path = _resolve_rank_file_path(workspace_root, retriever, order)
+    file_path = _resolve_rank_file_path(processed_root, retriever, order)
 
     if not os.path.exists(file_path):
         print(f"[warn] (corr) file not found for retriever={retriever}, order={order}: {file_path}")
@@ -227,13 +231,16 @@ def main():
         default="rp_high_low_ratio_by_order.png",
         help="Filename for the saved plot inside out_dir.",
     )
+    parser.add_argument(
+        "--processed_root",
+        type=str,
+        default=os.environ.get("ARGUS_PROCESSED_ROOT", os.path.join(workspace_root, "data", "processed")),
+        help="Processed data directory (contains 11_Emb_Rank/).",
+    )
     args = parser.parse_args()
 
-    # Resolve workspace root (same logic as 9_Analysis_Rank.py)
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    workspace_root = os.path.abspath(os.path.join(script_dir, "..", ".."))
-    if workspace_root not in sys.path:
-        sys.path.insert(0, workspace_root)
+    processed_root = args.processed_root if os.path.isabs(args.processed_root) else os.path.join(workspace_root, args.processed_root)
+    print(f"[paths] processed_root: {processed_root}")
 
     # Make all plot fonts 3pt bigger (ticks, labels, titles, etc.)
     # (This is +1pt on top of the previous +2pt setting.)
@@ -291,7 +298,7 @@ def main():
     for retriever in retrievers:
         for order in orders:
             ratio = compute_high_low_ratio_for_combo(
-                workspace_root=workspace_root,
+                processed_root=processed_root,
                 retriever=retriever,
                 order=order,
                 k=args.k,
@@ -307,7 +314,7 @@ def main():
     for retriever in retrievers:
         for order in orders:
             rc_arr, sc_arr = collect_related_counts_and_scores_for_combo(
-                workspace_root=workspace_root,
+                processed_root=processed_root,
                 retriever=retriever,
                 order=order,
                 k=args.k,
