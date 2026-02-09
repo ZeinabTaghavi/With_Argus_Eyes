@@ -150,6 +150,25 @@ def parse_gpu_ids() -> List[str]:
     return [g.strip() for g in env.split(",") if g.strip() != ""]
 
 
+def _resolve_first_existing_path(
+    label: str,
+    candidates: List[str],
+    *,
+    required: bool = True,
+) -> str | None:
+    """Pick the first existing path from candidates, or fail with context."""
+    for path in candidates:
+        if os.path.exists(path):
+            print(f"[paths] {label}: {path}")
+            return path
+    tried = ", ".join(candidates)
+    message = f"{label} file not found. Tried: {tried}"
+    if required:
+        raise FileNotFoundError(message)
+    print(f"[warn] {message}")
+    return None
+
+
 def _filter_non_relation_map_by_wiki(
     non_rel_map: Dict[str, List[str]],
     wiki_qids: set[str],
@@ -591,21 +610,37 @@ def main():
     # ---------------------------
     # Input paths
     # ---------------------------
-    NON_RELATION_TAGS_PATH = os.path.join(
-        workspace_root, "data", "processed", "wiki_unrelevants_results.jsonl"
+    NON_RELATION_TAGS_PATH = _resolve_first_existing_path(
+        "wiki unrelevants index",
+        [
+            os.path.join(workspace_root, "data", "processed", "wiki_unrelevants_results.jsonl"),
+            os.path.join(workspace_root, "data", "interim", "9_wiki_unrelevants_results.jsonl"),
+        ],
+        required=False,
     )
-    WIKIPEDIA_PAGES_PATH = os.path.join(
-        workspace_root, "data", "processed", "wikipedia_all_relevant_results.jsonl"
+    WIKIPEDIA_PAGES_PATH = _resolve_first_existing_path(
+        "wikipedia paragraph cache",
+        [
+            os.path.join(workspace_root, "data", "processed", "wikipedia_all_relevant_results.jsonl"),
+            os.path.join(workspace_root, "data", "interim", "4_tags_wikipedia_first_paragraphs_cache.jsonl"),
+            os.path.join(workspace_root, "data", "processed", "7_all_wikipedia_pages.jsonl"),
+        ],
+        required=True,
     )
-    MAIN_DATASET_PATH = os.path.join(
-        workspace_root, "data", "processed", "main_dataset.jsonl"
+    MAIN_DATASET_PATH = _resolve_first_existing_path(
+        "main dataset",
+        [
+            os.path.join(workspace_root, "data", "processed", "main_dataset.jsonl"),
+            os.path.join(workspace_root, "data", "interim", "6_main_dataset.jsonl"),
+        ],
+        required=True,
     )
 
     # ---------------------------
     # Load aux data
     # ---------------------------
     non_relation_tag_data = {}
-    if os.path.exists(NON_RELATION_TAGS_PATH):
+    if NON_RELATION_TAGS_PATH and os.path.exists(NON_RELATION_TAGS_PATH):
         with open(NON_RELATION_TAGS_PATH, "r", encoding="utf-8") as fh:
             for line in fh:
                 line = line.strip()
@@ -618,7 +653,7 @@ def main():
                     continue
         print(f"Loaded non relation tag map -> {NON_RELATION_TAGS_PATH}")
     else:
-        print(f"[warn] non relation tags file not found: {NON_RELATION_TAGS_PATH}")
+        print("[warn] non relation tags file not found; continuing with empty map.")
 
     wikipedia_pages_dict = _load_wikipedia_qid_map(WIKIPEDIA_PAGES_PATH)
     if not wikipedia_pages_dict:

@@ -89,6 +89,25 @@ QID_PATTERN = re.compile(r"^Q[1-9]\d*$")
 
 
 
+def _resolve_first_existing_path(
+    label: str,
+    candidates: List[str],
+    *,
+    required: bool = True,
+) -> str | None:
+    """Pick the first existing path from candidates, or fail with context."""
+    for path in candidates:
+        if os.path.exists(path):
+            print(f"[paths] {label}: {path}")
+            return path
+    tried = ", ".join(candidates)
+    message = f"{label} file not found. Tried: {tried}"
+    if required:
+        raise FileNotFoundError(message)
+    print(f"[warn] {message}")
+    return None
+
+
 def _ensure_wikipedia_texts() -> Dict[str, str]:
     """Load and cache canonical Wikipedia paragraphs keyed by qid."""
     global _WIKIPEDIA_TEXT_BY_QID
@@ -589,8 +608,14 @@ def main() -> None:
 
     # Workspace paths
     workspace_root = project_root
-    WIKIPEDIA_PAGES_PATH = os.path.join(
-        workspace_root, "data", "processed", "wikipedia_all_relevant_results.jsonl"
+    WIKIPEDIA_PAGES_PATH = _resolve_first_existing_path(
+        "wikipedia paragraph cache",
+        [
+            os.path.join(workspace_root, "data", "processed", "wikipedia_all_relevant_results.jsonl"),
+            os.path.join(workspace_root, "data", "interim", "4_tags_wikipedia_first_paragraphs_cache.jsonl"),
+            os.path.join(workspace_root, "data", "processed", "7_all_wikipedia_pages.jsonl"),
+        ],
+        required=True,
     )
 
     # Cache directory
