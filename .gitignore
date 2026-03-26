@@ -5,9 +5,9 @@ __pycache__/
 # Data and outputs
 /data/raw/
 /data/interim/
-/data/processed/*
-!/data/processed/11_Emb_Rank/
-!/data/processed/11_Emb_Rank/**
+# /data/processed/*
+# !/data/processed/11_Emb_Rank/
+# !/data/processed/11_Emb_Rank/**
 !/data/README.md
 !/outputs/README.md
 /data/processed/7_all_wikipedia_pages.jsonl
