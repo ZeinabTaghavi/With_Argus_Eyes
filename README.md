@@ -34,7 +34,16 @@ Because the full pipeline starts from large external resources (Wikidata/Wikiped
 - **Raw sources (external):** Wikidata + Wikipedia (not hosted here).
 - **Released processed artifacts:** selected outputs needed for reproducibility (tracked under `data/` and/or made available as downloads).
   - For example, the **risk-scored entity artifacts** produced after assigning RPS (e.g., the output of *Script 11*) are provided so users can skip the heaviest stages.
+  * Interim data release: we provide a zipped `interim/` artifact containing the outputs of the first four dataset-construction stages. This includes processed entity-level resources derived from the large-scale Wikidata/Wikipedia pipeline, covering approximately 7M processed entities. Users can unzip this artifact under `data/` and continue the remaining pipeline stages to reconstruct the final dataset. Download the artifact here: [interim.zip](https://drive.google.com/file/d/1Q3ona9pY5PHAygH_VYzVwSOqYNS_8L8A/view?usp=sharing).
 - **Full/large artifacts:** the largest intermediate corpora are made available via **Hugging Face** releases rather than GitHub.
+
+### Using the interim data release
+
+If you do not want to rerun the heaviest preprocessing stages, download the released `interim.zip` artifact and unzip it under `data/`:
+
+```bash
+unzip interim.zip -d data/
+```
 
 ### Models
 We release the **model checkpoints used in the paper** (and fine-tuned variants). These are distributed via **Hugging Face** so users can reproduce results or swap in a new model.
