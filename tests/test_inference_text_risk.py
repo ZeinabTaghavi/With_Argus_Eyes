@@ -11,6 +11,7 @@ from with_argus_eyes.inference import (
     extract_entities,
     resolve_model_artifact,
 )
+from with_argus_eyes.inference.text_risk import _install_legacy_utils_aliases
 
 
 class DummyModel:
@@ -112,3 +113,16 @@ def test_empty_text_and_no_entities_return_empty_results(tmp_path):
         )
         == []
     )
+
+
+def test_legacy_utils_aliases_are_installed_for_saved_artifacts():
+    import sys
+
+    for name in list(sys.modules):
+        if name == "utils" or name.startswith("utils."):
+            sys.modules.pop(name, None)
+
+    _install_legacy_utils_aliases()
+
+    assert sys.modules["utils.models.mlp"].__name__ == "with_argus_eyes.utils.models.mlp"
+    assert sys.modules["utils.models.baselines"].__name__ == "with_argus_eyes.utils.models.baselines"

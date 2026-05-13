@@ -3,8 +3,10 @@ from __future__ import annotations
 import glob
 import html
 import io
+import sys
 from dataclasses import dataclass
 from functools import lru_cache
+from importlib import import_module
 from pathlib import Path
 from typing import Any, Callable, Iterable, Literal, Sequence
 
@@ -307,6 +309,7 @@ def _torch_load_cpu(buffer: bytes) -> Any:
 
 
 def _load_joblib_artifact(artifact_path: Path) -> Any:
+    _install_legacy_utils_aliases()
     try:
         return joblib.load(artifact_path)
     except RuntimeError as exc:
@@ -324,6 +327,32 @@ def _load_joblib_artifact(artifact_path: Path) -> Any:
             return joblib.load(artifact_path)
         finally:
             torch.storage._load_from_bytes = original_loader
+
+
+def _alias_module(old: str, new: str) -> None:
+    try:
+        module = import_module(new)
+    except ImportError:
+        return
+    sys.modules.setdefault(old, module)
+
+
+def _install_legacy_utils_aliases() -> None:
+    """Support model artifacts pickled with the old top-level utils namespace."""
+
+    _alias_module("utils", "with_argus_eyes.utils")
+    for submodule in (
+        "embeddings",
+        "models",
+        "models.mlp",
+        "models.baselines",
+        "models.metrics",
+        "models.train_utils",
+        "risk",
+        "risk.scores",
+        "plots",
+    ):
+        _alias_module(f"utils.{submodule}", f"with_argus_eyes.utils.{submodule}")
 
 
 def score_entities(
