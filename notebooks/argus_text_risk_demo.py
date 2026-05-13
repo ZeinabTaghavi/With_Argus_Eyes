@@ -53,7 +53,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--text-mode",
         choices=("context", "canonical", "span"),
-        default="context",
+        default="span",
         help="How to convert entity/context pairs to embedding inputs.",
     )
     parser.add_argument("--batch-size", type=int, default=64, help="Embedding batch size.")

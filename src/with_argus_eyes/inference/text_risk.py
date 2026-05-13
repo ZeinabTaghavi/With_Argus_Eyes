@@ -4,6 +4,7 @@ import glob
 import html
 import io
 import sys
+import warnings
 from dataclasses import dataclass
 from functools import lru_cache
 from importlib import import_module
@@ -46,7 +47,7 @@ class ArgusTextConfig:
     ner_threshold: float = 0.5
     order: int | str = 800
     k: int = 50
-    text_mode: TextMode = "context"
+    text_mode: TextMode = "span"
     batch_size: int = 64
     max_length: int = 1048
     workspace_root: str | Path | None = None
@@ -285,6 +286,80 @@ def _texts_for_embedding(text: str, entities: Sequence[EntityMention], text_mode
     raise ValueError("text_mode must be one of: context, canonical, span")
 
 
+def _entity_surface_from_offsets(text: str, entity: EntityMention) -> str:
+    if 0 <= entity.start < entity.end <= len(text):
+        surface = text[entity.start : entity.end].strip()
+        if surface:
+            return surface
+    return entity.text
+
+
+def _encode_entity_vectors(
+    retriever: Any,
+    text: str,
+    entities: Sequence[EntityMention],
+    config: ArgusTextConfig,
+) -> list[np.ndarray]:
+    if config.text_mode != "span":
+        embed_texts = _texts_for_embedding(text, entities, config.text_mode)
+        return retriever.encode_texts(
+            embed_texts,
+            batch_size=config.batch_size,
+            max_length=config.max_length,
+        )
+
+    if not hasattr(retriever, "encode_spans"):
+        warnings.warn(
+            "Selected retriever does not implement encode_spans; "
+            "falling back to canonical label/context encoding.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        canonical_texts = [_canonicalize(entity.text, text) for entity in entities]
+        return retriever.encode_texts(
+            canonical_texts,
+            batch_size=config.batch_size,
+            max_length=config.max_length,
+        )
+
+    span_phrases = [_entity_surface_from_offsets(text, entity) for entity in entities]
+    try:
+        return retriever.encode_spans(
+            [text for _ in entities],
+            span_phrases,
+            batch_size=config.batch_size,
+            max_length=config.max_length,
+        )
+    except ValueError:
+        vectors: list[np.ndarray] = []
+        for entity, span_phrase in zip(entities, span_phrases):
+            try:
+                span_vector = retriever.encode_spans(
+                    [text],
+                    [span_phrase],
+                    batch_size=1,
+                    max_length=config.max_length,
+                )
+                vectors.extend(span_vector)
+            except ValueError as exc:
+                warnings.warn(
+                    "Could not span-encode entity "
+                    f"{entity.text!r} at offsets ({entity.start}, {entity.end}); "
+                    "falling back to canonical label/context encoding. "
+                    f"Original error: {exc}",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+                canonical = _canonicalize(entity.text, text)
+                canonical_vector = retriever.encode_texts(
+                    [canonical],
+                    batch_size=1,
+                    max_length=config.max_length,
+                )
+                vectors.extend(canonical_vector)
+        return vectors
+
+
 def _predict_scores(artifact_path: Path, vectors: np.ndarray) -> np.ndarray:
     artifact = _load_joblib_artifact(artifact_path)
     if isinstance(artifact, dict) and "model" in artifact:
@@ -388,20 +463,7 @@ def score_entities(
     selected_artifact = _resolve_path(model_artifact, config.root) if model_artifact else resolve_model_artifact(config)
     selected_retriever = retriever or build_retriever(config.retriever, device=config.device)
 
-    if config.text_mode == "span":
-        vectors = selected_retriever.encode_spans(
-            [text for _ in normalized_entities],
-            [entity.text for entity in normalized_entities],
-            batch_size=config.batch_size,
-            max_length=config.max_length,
-        )
-    else:
-        embed_texts = _texts_for_embedding(text, normalized_entities, config.text_mode)
-        vectors = selected_retriever.encode_texts(
-            embed_texts,
-            batch_size=config.batch_size,
-            max_length=config.max_length,
-        )
+    vectors = _encode_entity_vectors(selected_retriever, text, normalized_entities, config)
 
     x = np.asarray(vectors, dtype=np.float32)
     scores = _predict_scores(selected_artifact, x)

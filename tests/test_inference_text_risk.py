@@ -6,9 +6,11 @@ import pytest
 
 from with_argus_eyes.inference import (
     ArgusTextConfig,
+    EntityMention,
     analyze_text,
     available_retrievers,
     extract_entities,
+    score_entities,
     resolve_model_artifact,
 )
 from with_argus_eyes.inference.text_risk import _install_legacy_utils_aliases
@@ -24,6 +26,32 @@ class DummyRetriever:
         return np.ones((len(texts), 3), dtype=np.float32)
 
 
+class SpanCheckingRetriever:
+    def __init__(self):
+        self.span_phrases = []
+        self.text_inputs = []
+
+    def encode_spans(self, texts, phrases, batch_size=32, max_length=256):
+        self.span_phrases.extend(phrases)
+        return np.ones((len(phrases), 3), dtype=np.float32)
+
+    def encode_texts(self, texts, batch_size=32, max_length=256):
+        self.text_inputs.extend(texts)
+        return np.zeros((len(texts), 3), dtype=np.float32)
+
+
+class FailingSpanRetriever:
+    def __init__(self):
+        self.text_inputs = []
+
+    def encode_spans(self, texts, phrases, batch_size=32, max_length=256):
+        raise ValueError(f"Phrase not found in text: {phrases[0]!r}")
+
+    def encode_texts(self, texts, batch_size=32, max_length=256):
+        self.text_inputs.extend(texts)
+        return np.ones((len(texts), 3), dtype=np.float32)
+
+
 def test_argus_text_config_defaults():
     config = ArgusTextConfig()
 
@@ -34,7 +62,7 @@ def test_argus_text_config_defaults():
     assert config.ner_threshold == 0.5
     assert config.order == 800
     assert config.k == 50
-    assert config.text_mode == "context"
+    assert config.text_mode == "span"
     assert "rader" not in available_retrievers()
 
 
@@ -126,3 +154,37 @@ def test_legacy_utils_aliases_are_installed_for_saved_artifacts():
 
     assert sys.modules["utils.models.mlp"].__name__ == "with_argus_eyes.utils.models.mlp"
     assert sys.modules["utils.models.baselines"].__name__ == "with_argus_eyes.utils.models.baselines"
+
+
+def test_span_mode_uses_original_text_surface_from_offsets(tmp_path):
+    artifact = tmp_path / "dummy.joblib"
+    joblib.dump(DummyModel(), artifact)
+    retriever = SpanCheckingRetriever()
+
+    score_entities(
+        "St. Martin's in Zillis",
+        [EntityMention(text="Martin", entity_type="PER", start=0, end=12, score=0.9)],
+        ArgusTextConfig(text_mode="span"),
+        retriever=retriever,
+        model_artifact=artifact,
+    )
+
+    assert retriever.span_phrases == ["St. Martin's"]
+
+
+def test_span_mode_falls_back_to_canonical_when_span_cannot_be_encoded(tmp_path):
+    artifact = tmp_path / "dummy.joblib"
+    joblib.dump(DummyModel(), artifact)
+    retriever = FailingSpanRetriever()
+
+    with pytest.warns(RuntimeWarning, match="falling back to canonical"):
+        results = score_entities(
+            "A short context.",
+            [EntityMention(text="Missing Entity", entity_type="MISC", start=100, end=120, score=0.9)],
+            ArgusTextConfig(text_mode="span"),
+            retriever=retriever,
+            model_artifact=artifact,
+        )
+
+    assert len(results) == 1
+    assert retriever.text_inputs == ["Missing Entity : A short context."]
