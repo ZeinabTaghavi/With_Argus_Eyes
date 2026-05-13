@@ -1,4 +1,4 @@
-"""Notebook-friendly inference helpers for ARGUS text risk scoring."""
+"""Notebook-friendly inference helpers for ARGUS text RPS scoring."""
 
 from .text_risk import (
     ArgusTextConfig,

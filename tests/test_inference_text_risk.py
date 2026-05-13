@@ -10,6 +10,7 @@ from with_argus_eyes.inference import (
     analyze_text,
     available_retrievers,
     extract_entities,
+    highlight_entities,
     score_entities,
     resolve_model_artifact,
 )
@@ -122,6 +123,9 @@ def test_analyze_text_with_mocked_ner_retriever_and_model(tmp_path):
     )
 
     assert [row["entity"] for row in results] == ["Zurich", "ETH Zurich"]
+    assert [row["rps_score"] for row in results] == [0.2, 0.7]
+    assert [row["meets_threshold"] for row in results] == [False, True]
+    assert [row["below_threshold"] for row in results] == [True, False]
     assert [row["above_threshold"] for row in results] == [False, True]
     assert all(row["retriever"] == "contriever" for row in results)
 
@@ -188,3 +192,30 @@ def test_span_mode_falls_back_to_canonical_when_span_cannot_be_encoded(tmp_path)
 
     assert len(results) == 1
     assert retriever.text_inputs == ["Missing Entity : A short context."]
+
+
+def test_highlight_entities_marks_low_rps_as_warning():
+    html = highlight_entities(
+        "Alpha Beta",
+        [
+            {
+                "entity": "Alpha",
+                "start": 0,
+                "end": 5,
+                "rps_score": 0.2,
+                "below_threshold": True,
+            },
+            {
+                "entity": "Beta",
+                "start": 6,
+                "end": 10,
+                "rps_score": 0.8,
+                "below_threshold": False,
+            },
+        ],
+    )
+
+    assert "RPS=0.200" in html
+    assert "RPS=0.800" in html
+    assert "#f7b2ad" in html
+    assert "#b9dfc6" in html

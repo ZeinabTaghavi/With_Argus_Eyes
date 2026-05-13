@@ -38,12 +38,12 @@ def _default_workspace_root() -> Path:
 
 @dataclass(frozen=True)
 class ArgusTextConfig:
-    """Configuration for raw-text entity extraction and ARGUS risk scoring."""
+    """Configuration for raw-text entity extraction and ARGUS RPS scoring."""
 
     retriever: str = "contriever"
     language: str = "en"
     ner_model: str = "dslim/bert-base-NER"
-    risk_threshold: float = 0.3
+    risk_threshold: float = 0.3  # Minimum acceptable Retrieval Probability Score (RPS).
     ner_threshold: float = 0.5
     order: int | str = 800
     k: int = 50
@@ -84,15 +84,16 @@ class EntityMention:
 
 @dataclass(frozen=True)
 class EntityRiskResult:
-    """A table-ready ARGUS result for one extracted entity."""
+    """A table-ready ARGUS RPS result for one extracted entity."""
 
     entity: str
     entity_type: str
     start: int
     end: int
     ner_score: float
-    risk_score: float
-    above_threshold: bool
+    rps_score: float
+    meets_threshold: bool
+    below_threshold: bool
     retriever: str
     model_artifact: str
     context: str
@@ -104,8 +105,12 @@ class EntityRiskResult:
             "start": self.start,
             "end": self.end,
             "ner_score": self.ner_score,
-            "risk_score": self.risk_score,
-            "above_threshold": self.above_threshold,
+            "rps_score": self.rps_score,
+            "meets_threshold": self.meets_threshold,
+            "below_threshold": self.below_threshold,
+            # Backward-compatible aliases for older notebooks/scripts.
+            "risk_score": self.rps_score,
+            "above_threshold": self.meets_threshold,
             "retriever": self.retriever,
             "model_artifact": self.model_artifact,
             "context": self.context,
@@ -479,8 +484,9 @@ def score_entities(
             start=entity.start,
             end=entity.end,
             ner_score=entity.score,
-            risk_score=float(score),
-            above_threshold=bool(float(score) >= config.risk_threshold),
+            rps_score=float(score),
+            meets_threshold=bool(float(score) >= config.risk_threshold),
+            below_threshold=bool(float(score) < config.risk_threshold),
             retriever=config.retriever,
             model_artifact=str(selected_artifact),
             context=text,
@@ -514,34 +520,36 @@ def analyze_text(
 
 
 def highlight_entities(text: str, results: Sequence[dict[str, Any] | EntityRiskResult]) -> str:
-    """Return HTML with entities highlighted by risk-threshold status."""
+    """Return HTML with entities highlighted by RPS-threshold status."""
 
     spans: list[tuple[int, int, str, bool, float]] = []
     for row in results:
         data = row.as_dict() if isinstance(row, EntityRiskResult) else row
+        score = float(data.get("rps_score", data.get("risk_score", 0.0)))
+        below_threshold = bool(data.get("below_threshold", not bool(data.get("above_threshold", True))))
         spans.append(
             (
                 int(data["start"]),
                 int(data["end"]),
                 str(data["entity"]),
-                bool(data["above_threshold"]),
-                float(data["risk_score"]),
+                below_threshold,
+                score,
             )
         )
     spans.sort(key=lambda item: (item[0], item[1]))
 
     pieces: list[str] = []
     cursor = 0
-    for start, end, label, risky, score in spans:
+    for start, end, label, below_threshold, score in spans:
         if start < cursor:
             continue
         pieces.append(html.escape(text[cursor:start]))
-        color = "#f7b2ad" if risky else "#b9dfc6"
-        border = "#a33b32" if risky else "#2f7d45"
+        color = "#f7b2ad" if below_threshold else "#b9dfc6"
+        border = "#a33b32" if below_threshold else "#2f7d45"
         pieces.append(
             '<mark style="'
             f"background:{color}; border-bottom:2px solid {border}; padding:0 0.15rem;"
-            f'" title="{html.escape(label)} risk={score:.3f}">'
+            f'" title="{html.escape(label)} RPS={score:.3f}">'
             f"{html.escape(text[start:end])}</mark>"
         )
         cursor = end

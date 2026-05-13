@@ -135,6 +135,30 @@ This is intended for “plug-and-play” analysis: provide the **context**, **en
 - **Where to look:** `docs/MODELS.md` (usage + expected input format)
 - **Entry point:** `scripts/` (Script 14)
 
+### Interactive raw-text RPS notebook
+For a user-friendly raw-text workflow, use:
+
+- Notebook: `notebooks/argus_text_risk_demo.ipynb`
+- Debug script with the same procedure: `notebooks/argus_text_risk_demo.py`
+
+The notebook lets users enter raw text, configure the retriever, NER model, GPU IDs, Hugging Face cache paths, and the minimum acceptable **Retrieval Probability Score (RPS)**. It then extracts named entities, encodes them with the selected retriever, predicts RPS, highlights low-RPS entities, and prints a compact JSON view containing only entity names and RPS values.
+
+Typical notebook usage:
+
+```bash
+jupyter notebook notebooks/argus_text_risk_demo.ipynb
+```
+
+For terminal debugging with step-by-step prints:
+
+```bash
+python notebooks/argus_text_risk_demo.py --help
+python notebooks/argus_text_risk_demo.py --text "Zurich is home to ETH Zurich."
+python notebooks/argus_text_risk_demo.py --text-file my_text.txt --retriever contriever
+```
+
+The first run may download the configured NER model (`dslim/bert-base-NER` by default) or the selected embedding model if they are not already cached.
+
 ---
 
 ## 📈 Reproducing figures

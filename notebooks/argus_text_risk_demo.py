@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Command-line companion for ``argus_text_risk_demo.ipynb``.
 
-This script follows the same raw-text -> NER -> embedding -> ARGUS scoring
+This script follows the same raw-text -> NER -> embedding -> ARGUS RPS scoring
 procedure as the notebook, but prints each step for easier debugging.
 """
 
@@ -39,14 +39,21 @@ def bootstrap_imports(repo_root: Path) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run the ARGUS raw-text NER and risk-scoring demo with debug prints."
+        description="Run the ARGUS raw-text NER and RPS-scoring demo with debug prints."
     )
     parser.add_argument("--text", type=str, default="", help="Raw text to analyze.")
     parser.add_argument("--text-file", type=str, default="", help="Path to a UTF-8 text file to analyze.")
     parser.add_argument("--retriever", type=str, default="contriever", help="Retriever backend.")
     parser.add_argument("--language", type=str, default="en", help="NER/input language label.")
     parser.add_argument("--ner-model", type=str, default="dslim/bert-base-NER", help="Hugging Face NER model.")
-    parser.add_argument("--risk-threshold", type=float, default=0.3, help="ARGUS risk threshold.")
+    parser.add_argument(
+        "--risk-threshold",
+        "--rps-threshold",
+        dest="risk_threshold",
+        type=float,
+        default=0.3,
+        help="Minimum acceptable Retrieval Probability Score (RPS). Lower values are flagged.",
+    )
     parser.add_argument("--ner-threshold", type=float, default=0.5, help="NER confidence threshold.")
     parser.add_argument("--order", type=str, default="800", help="ARGUS trained-model order value.")
     parser.add_argument("--k", type=int, default=50, help="ARGUS trained-model k value.")
@@ -150,7 +157,8 @@ def make_config(args: argparse.Namespace, repo_root: Path) -> Any:
         model_artifact=args.model_artifact or None,
     )
     for key, value in config.__dict__.items():
-        print(f"  {key}: {value}")
+        label = "rps_threshold" if key == "risk_threshold" else key
+        print(f"  {label}: {value}")
     return config
 
 
@@ -171,7 +179,7 @@ def print_results(results: list[Any]) -> None:
         return
 
     rows = [result.as_dict() if hasattr(result, "as_dict") else dict(result) for result in results]
-    columns = ("entity", "entity_type", "ner_score", "risk_score", "above_threshold", "retriever")
+    columns = ("entity", "entity_type", "ner_score", "rps_score", "meets_threshold", "below_threshold", "retriever")
     widths = {
         column: max(len(column), *(len(format_value(row[column])) for row in rows))
         for column in columns
@@ -179,8 +187,24 @@ def print_results(results: list[Any]) -> None:
     header = " | ".join(column.ljust(widths[column]) for column in columns)
     print("  " + header)
     print("  " + "-+-".join("-" * widths[column] for column in columns))
-    for row in sorted(rows, key=lambda item: item["risk_score"], reverse=True):
+    for row in sorted(rows, key=lambda item: item["rps_score"], reverse=True):
         print("  " + " | ".join(format_value(row[column]).ljust(widths[column]) for column in columns))
+
+
+def compact_rps_results(results: list[Any]) -> list[dict[str, Any]]:
+    rows = [result.as_dict() if hasattr(result, "as_dict") else dict(result) for result in results]
+    return [
+        {
+            "entity": row["entity"],
+            "rps_score": float(row["rps_score"]),
+        }
+        for row in sorted(rows, key=lambda item: item["rps_score"], reverse=True)
+    ]
+
+
+def print_compact_json(results: list[Any]) -> None:
+    print("  compact entity/RPS JSON:")
+    print(indent_block(json.dumps(compact_rps_results(results), ensure_ascii=False, indent=2)))
 
 
 def format_value(value: Any) -> str:
@@ -228,13 +252,15 @@ def main() -> None:
         write_json_output(args.json_output, repo_root, [])
         return
 
-    print("[step 6] Embedding entities and predicting ARGUS risk scores")
+    print("[step 6] Embedding entities and predicting ARGUS Retrieval Probability Scores (RPS)")
     results = score_entities(text, entities, config, model_artifact=artifact)
 
     print("[step 7] Results")
     print_results(results)
+    print("[step 7b] Compact JSON output: entity names and Retrieval Probability Scores")
+    print_compact_json(results)
     write_json_output(args.json_output, repo_root, results)
-    print("[done] ARGUS text risk demo finished successfully.")
+    print("[done] ARGUS text RPS demo finished successfully.")
 
 
 if __name__ == "__main__":
