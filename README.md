@@ -6,7 +6,7 @@
 
 > Official code + data + model releases for the **With Argus Eyes** paper.
 >
-> **This repo provides:** (1) the full dataset construction pipeline (Wikidata/Wikipedia), (2) released processed artifacts for reproducibility, (3) released model checkpoints, and (4) utilities to score **Retrieval Probability Score (RPS)** for your own inputs.
+> **This repo provides:** (1) the full dataset construction pipeline (Wikidata/Wikipedia), (2) released processed artifacts for reproducibility, (3) released model checkpoints, and (4) an easy notebook/script workflow to score **Retrieval Probability Score (RPS)** for your own text.
 
 ---
 
@@ -16,7 +16,8 @@ This repository is the reference implementation for **With Argus Eyes**. It is d
 1. **Build the dataset from scratch** starting from Wikidata/Wikipedia (heavy).
 2. **Reuse released processed artifacts** for quick, reproducible runs.
 3. **Use released model checkpoints** (or plug in your own model).
-4. **Reproduce the paper figures** from stored experiment outputs.
+4. **Score your own text** with the RPS notebook and matching debug script.
+5. **Reproduce the paper figures** from stored experiment outputs.
 
 **Scope note.** This repo focuses on the dataset + experimental pipeline used in the paper (not a full production RAG system).
 
@@ -26,7 +27,8 @@ This repository is the reference implementation for **With Argus Eyes**. It is d
 ### Code
 - **Dataset construction pipeline** (raw → aligned entities → RPS computation → risk-scored subsets).
 - **Training / evaluation scripts** used in the paper.
-- **RPS scoring utility (Script 14)** to compute RPS for your own inputs using any released model **or your own**.
+- **User-friendly RPS notebook + debug script** for scoring raw text with released models.
+- **Lower-level batch scoring utility (Script 14)** for prepared `label` + `context` pairs.
 
 ### Data
 Because the full pipeline starts from large external resources (Wikidata/Wikipedia), we separate **raw sources** from **released artifacts**:
@@ -123,33 +125,21 @@ bash configs/training/run_all.sh
 
 ---
 
-## 🧾 RPS scoring utility (Script 14)
-If you have your own list of examples and want to compute RPS for entities under:
-- one of the **released models**, or
-- **your own** retriever/embedding model,
-
-use the scoring utility in *Script 14*.
-
-This is intended for “plug-and-play” analysis: provide the **context**, **entity label/mention**, and any required metadata, then compute the entity’s RPS (or predicted risk) under a chosen model.
-
-- **Where to look:** `docs/MODELS.md` (usage + expected input format)
-- **Entry point:** `scripts/` (Script 14)
-
-### Interactive raw-text RPS notebook
-For a user-friendly raw-text workflow, use:
+## 🧾 Score your own text with RPS
+The easiest way to use ARGUS on your own text is the interactive notebook:
 
 - Notebook: `notebooks/argus_text_risk_demo.ipynb`
 - Debug script with the same procedure: `notebooks/argus_text_risk_demo.py`
 
-The notebook lets users enter raw text, configure the retriever, NER model, GPU IDs, Hugging Face cache paths, and the minimum acceptable **Retrieval Probability Score (RPS)**. It then extracts named entities, encodes them with the selected retriever, predicts RPS, highlights low-RPS entities, and prints a compact JSON view containing only entity names and RPS values.
+The notebook lets users paste raw text, choose a retriever, configure the NER model, set GPU IDs and Hugging Face cache paths, and compute **Retrieval Probability Score (RPS)** for extracted entities. High RPS means the entity is expected to be easier to retrieve; low RPS highlights a possible retrieval gap.
 
-Typical notebook usage:
+Run the notebook:
 
 ```bash
 jupyter notebook notebooks/argus_text_risk_demo.ipynb
 ```
 
-For terminal debugging with step-by-step prints:
+For easier debugging, run the matching Python script. It follows the same procedure as the notebook and prints each step, the extracted entities, the RPS table, and compact JSON with only entity names and RPS values:
 
 ```bash
 python notebooks/argus_text_risk_demo.py --help
@@ -158,6 +148,8 @@ python notebooks/argus_text_risk_demo.py --text-file my_text.txt --retriever con
 ```
 
 The first run may download the configured NER model (`dslim/bert-base-NER` by default) or the selected embedding model if they are not already cached.
+
+**Advanced/batch use.** Script 14 is still available for users who already have prepared `label` + `context` pairs and want a lower-level scoring utility. See `docs/MODELS.md` and `scripts/training/14_Score_Label_Context_Pairs.py`.
 
 ---
 
